@@ -1,0 +1,18 @@
+#!/usr/bin/expect
+set infile [lrange $argv 0 0]
+spawn dnaml
+expect "Please enter a new file name>"
+send "$infile\r"
+expect "Y to accept these or type the letter for one to change"
+send "T\r"
+expect "Transition/transversion ratio?"
+send "1\r"
+expect "Y to accept these or type the letter for one to change"
+send "F\r"
+expect "Base frequencies for A, C, G, T/U (use blanks to separate)?"
+send "0.29 0.21 0.21 0.29\r"
+expect "Y to accept these or type the letter for one to change"
+send "Y\r"
+expect eof
+wait
+#catch wait result
