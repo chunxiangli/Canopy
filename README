@@ -1,0 +1,20 @@
+iPRANK is an iterative alignment tool with the latest version of PRANK. Meanwhile, it will support some existing aligner tools, such as MAFFT, MUSCLE, ClustalW and PRANK. Additionally, RAxML and FastTree are available for tree inference. Now the version with MAFFT, PRANK and RAxML has been tested. Basically, it is consisted of two steps: initial tree estimation and iterate improvement. At the first step, a initial tree is estimated based on a fast initial alignment. Then at the iterate improvement step, the input data will be divided into small subsets by recursively splitting the estimated guide tree to make the size of the result trees not larger than user defined threshold according to the specified decomposition strategy, longest branch or seed. Those subsets will be aligned by PRANK separately and their alignment results will be merged into a new whole alignment according to the guide tree. Based on the new whole alignment, RAxML will provide a new tree which will be accepted as the new guide tree. This step will repeat pre-defined times and then output the tree with the highest RAxML likelihood score and its corresponding alignment.
+
+There are three ways to run iPRANK:
+  1. You can given all parameters in a config file and then run:
+      python iPRANK.py config_file
+
+  2. You can also specify them in command line:
+      python iPRANK.py --seq=input_file --max_iter=maximum_iter --num_cpus=num_cpus --max_prob_size=size --prank.args=prank_args
+      
+  3. If you want to reuse some parameters in a previous config file, you can use it and then overwrite other parameters in command line:
+      python iPRANK.py config_file --seq=input_file --max_iter=maximum_iter
+  
+  In the above, input_file is supposed to be in FASTA format and the data is DNA sequence. Otherwise, you should give the format using "--format" option and the datatype of the input file using "--datatype" option. By default, it stores input data and the results of its two steps. If you want to keep other intermediate files, please check "--save_option". And iPRANK uses precompiled tools in its source directory with some default parameters. You can give extra parameters to those integrated tools and also use your own installed version. With the config file, you need create a separate module as following:
+  [TOOL_NAME]
+  path=executable_path
+  args=parameter_list
+  While, in command way:
+  --TOOL_NAME.path=executable_path --TOOL_NAME.args="paramete_list"
+  where, TOOL_NAME should be replaced with the real name of the tool. For tree inference tools, the model can be specified with "model" in config file and "__TOOL_NAME.model" in command line. By defaul, RAxML uses the GTRGAMMA model for DNA data and the PROTCATWAGF model for PROTEIN data.
+  In addition, the default value of num_cpus is 1. If the given num_cpus is more than the availabel cpus in the current working machine, it will correct that parameter to the availabel number. If you don't give the max_iter value, the iterate improvement step will repeat 10 times.
