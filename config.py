@@ -203,6 +203,12 @@ class ConfigAndOptionParser(dict, object):
 		g.append(Option('muscle.path', '--muscle.path', group='muscle', help='muscle exectutable path'))
                 g.append(Option('muscle.args', '--muscle.args', group='muscle', help='Extra arguments'))
                 self._sections['muscle'] = g
+
+		g = []
+                g.append(Option('prankTree.path', '--prankTree.path', group='prankTree', help='prankTree exectutable path'))
+                g.append(Option('prankTree.args', '--prankTree.args', group='prankTree', help='Extra arguments'))
+                self._sections['prankTree'] = g
+
 		g = []
 		g.append(Option('fasttree.path', '--fasttree.path', group='fasttree', help='fasttree exectutable path'))
                 g.append(Option('fasttree.args', '--fasttree.args', group='fasttree', help='Extra arguments'))

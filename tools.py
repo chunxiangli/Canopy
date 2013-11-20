@@ -152,11 +152,9 @@ class Alignment(dict, object):
 		return new_align
 
 	def update(self, align):
-		names = align.names
+		self.names = align.names
 		self._datatype = align.datatype
-		for name in names:
-			if not name in self.names:
-				self.names.append(name)
+		for name in self.names:
 			self[name] = align[name]
 			
 	def append(self, align):

@@ -100,18 +100,14 @@ class CoEstimator(JobBase):
 				MESSENGER.send_info("Iteration %d: align done."%(self._cur_iter))
 
 				#estimate new tree and check whether got improved
-				new_score = None
-				if self._num_taxa > 3:
-					MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
-                                	new_score = self._update_tree(cur_iter_work_tmp_dir)
-					MESSENGER.send_info("Iteration %d: tree estimation done."%(self._cur_iter))
-					if not self._subiter:
-						self._store_iterational_tree_result(new_score)
+				MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
+                                new_score = self._update_tree(cur_iter_work_tmp_dir)
+				MESSENGER.send_info("Iteration %d: tree estimation done."%(self._cur_iter))
 
-					self._tree = self._new_tree
-				else:
-                        		_LOG.info("Can't use %s. The alignment size is smaller than 4."%self._tree_estimator.name)
-					self._best_iter = self._cur_iter
+				if not self._subiter:
+					self._store_iterational_tree_result(new_score)
+
+				self._tree = self._new_tree
 
 				if not self._subiter:
 					self._align_files = self._iterational_result_files[self._cur_iter]
@@ -146,45 +142,61 @@ class CoEstimator(JobBase):
 
 		assert new_alignment_num_taxa == self._num_taxa, "The number of taxa of new alignment not equals the original number."
 		
+		if new_alignment_num_taxa > 3:
+			_LOG.debug("Start tree estimation...")
+			self.check_status()
+			
+			if self._align_datatype == "CODON":
+				_LOG.debug("Codon alignment need translation for tree estimation...")
+				temp_result_file = "%s/iteration%d_temp_result.fas"%(self._workdir, self._cur_iter)
+				new_concatenated_alignment.write_to_path(temp_result_file)
 
-                self.check_status()
-		
-		if self._align_datatype == "CODON":
-                	_LOG.debug("Codon alignment need translation for tree estimation...")
-			temp_result_file = "%s/iteration%d_temp_result.fas"%(self._workdir, self._cur_iter)
-			new_concatenated_alignment.write_to_path(temp_result_file)
+				new_concatenated_alignment = Alignment()
+				translated_path = translate_data(self._translator, temp_result_file, self._workdir)
+				new_concatenated_alignment.read_from_path(translated_path, data_type="PROTEIN")
+				remove_files([temp_result_file, translated_path])
+				_LOG.debug("translation done.")
 
-			new_concatenated_alignment = Alignment()
-			translated_path = translate_data(self._translator, temp_result_file, self._workdir)
-			new_concatenated_alignment.read_from_path(translated_path, data_type="PROTEIN")
-			remove_files([temp_result_file, translated_path])
-                	_LOG.debug("translation done.")
+			tree_estimator = self._tree_estimator.create_job(new_concatenated_alignment,
+									 num_cpus = self._num_cpus,
+									 tmp_dir=work_directory, 
+									 delete_temps=self._kwargs.get("delete_temps"),
+									 model=self._kwargs.get("model", ""),
+									 id=self.id,
+									 description=self._kwargs.get("description", "whole"))
+			self._jobs = [tree_estimator]
+			self.check_status()
+			tree_estimator.start()
+			new_score, self._new_tree = tree_estimator.get_result()
+			new_concatenated_alignment = None
+			self._jobs = None
 
-                _LOG.debug("Start tree estimation...")
+			_LOG.debug("Tree estimation done.")
+			def score_improved(new_score):
 
-                tree_estimator = self._tree_estimator.create_job(new_concatenated_alignment,
-								 num_cpus = self._num_cpus,
-								 tmp_dir=work_directory, 
-								 delete_temps=self._kwargs.get("delete_temps"),
-								 model=self._kwargs.get("model", ""),
-								 id=self.id,
-								 description=self._kwargs.get("description", "whole"))
-                self._jobs = [tree_estimator]
-                self.check_status()
-		tree_estimator.start()
-                new_score, self._new_tree = tree_estimator.get_result()
-		new_concatenated_alignment = None
-                self._jobs = None
+                                if self._tree_estimator.name == "prankTree":
+                                        print "score update:",self._prank_score, self._best_score
+                                        if self._best_score is None:
+                                                self._best_score = self._prank_score
+                                                return True
+                                        elif self._prank_score < self._best_score:
+                                                self._best_score = self._prank_score
+                                                return True
+                                elif self._best_score is None or new_score > self._best_score:
+                                        print "raxml score update"
+                                        self._best_score = new_score
+                                        return True
+                                return False
 
-                _LOG.debug("Tree estimation done.")
+			self.check_status()
 
-                self.check_status()
-
-                if self._best_score is None or new_score >= self._best_score:
-                        MESSENGER.send_info("Tree improved at iteration %d."%self._cur_iter)
-                        self._best_score = new_score
-			self._best_tree = self._new_tree
-			self._best_iter = self._cur_iter
+			if score_improved(new_score):
+                                MESSENGER.send_info("Tree improved at iteration %d."%self._cur_iter)
+                                self._best_tree = self._new_tree
+                                self._best_iter = self._cur_iter
+		else:
+			_LOG.info("Can't use %s. The alignment size is smaller than 4."%self._tree_estimator.name)
+                        self._best_iter = self._cur_iter
 
 		#print "get new tree done"
                 return new_score
@@ -309,10 +321,9 @@ class CoEstimator(JobBase):
 					source_file_prefix = "result.aligned.best"
 					if "".join(job._command).find("-ot=") != -1:
 						source_file_prefix = "result.aligned"
+
 					if -1 != job.name.find("prankmerger"):
 						source_file_prefix = "merged"
-
-					MESSENGER.send_info("name not encode. need copy. job command:%s . search key:%s"%(" ".join(job._command), source_file_prefix))
 
 					copy_files(wdir, source_file_prefix, file_prefix, result_dir)
 					result_align_path = os.path.join(result_dir, file_prefix+".fas")
@@ -324,7 +335,10 @@ class CoEstimator(JobBase):
 					self._prank_score = results[-1].split(':')[1].strip()
 					_LOG.debug("prank score:%s"%self._prank_score)
 
-				self._file_manager.remove_dirs([wdir])
+				if 'all' != self._save_option:
+                                        _LOG.debug("remove %s"%wdir)
+                                        self._file_manager.remove_dirs([wdir])
+
 				_LOG.debug("finish store prank score")
 			else:
 				_LOG.debug("Just output the alignment result")
@@ -395,14 +409,14 @@ class CoEstimator(JobBase):
                 if tree_schema == "nexus":
                         suffix = ".nex"
 
-		if new_score is not None:
-                	score_file = os.path.join(wdir, "iteration%d_score.txt"%self._cur_iter)
-			with open(score_file, 'w') as sf:
-                		sf.write("%.5f"%new_score)
-				try:
-					sf.write(" %s"%self._prank_score)
-				except:
-					pass
+		score_file = os.path.join(wdir, "iteration%d_score.txt"%self._cur_iter)
+                with open(score_file, 'w') as sf:
+                        if new_score is not None:
+                                sf.write("%.5f "%new_score)
+                        try:   
+                                sf.write("%s"%self._prank_score)
+                        except:
+                                pass
 
 		if self._new_tree is not None:
 			st_file = os.path.join(wdir, "iteration%d%s"%(self._cur_iter, suffix))
@@ -485,7 +499,7 @@ class AlignMergeTree(object):
 
 	def generate_children(self):
 		if self.need_split():
-			if "longest" == self._kwargs.get("decomposite", "seed"):
+			if "seed" == self._kwargs.get("decomposite", "seed"):
 				t1, t2, self.merge_dist1, self.merge_dist2 = self._phy_tree.bipartition_by_seed()
 			else:
 				t1, t2, self.merge_dist1, self.merge_dist2 = self._phy_tree.bipartition_by_longest_internal_edge()	

@@ -487,8 +487,10 @@ class Mafft(Aligner):
 		command = [self.cmd]
 
 		#TODO:just comment at test
+		'''
 		if unaligned_seqs.get_num_taxa() < 200 and unaligned_seqs.max_sequence_length() < 10000:
 			command.extend(["--localpair", "--maxiterate", "1000"])
+		'''
 
 		command.extend(["--quiet", ifn])
 		if self.user_config is not None:
@@ -642,7 +644,7 @@ class PrankMerger(Merger):
 
                 wdir, input1, input2, tree1, tree2, output = self._preprocess_input(alignment1, alignment2, guide_tree1, guide_tree2, is_merge=is_merge, **kwargs)
 	
-		command = [self.cmd, "-o=%s"%output, "-nomissing"]
+		command = [self.cmd, "-o=%s"%output]
 		if is_merge:
 			command.extend(["-d1=%s"%input1,"-d2=%s"%input2])
 			if tree1 is not None and tree2 is not None:
@@ -718,6 +720,39 @@ class PrankTree(TreeEstimator):
                 postp = lambda: read_result(result_file+".dnd")
 		
 		return Job(command,
+                           post_processor=postp,
+                           cwd=wdir,
+                           id=kwargs.get("id",""),
+                           description="%s_%s"%(kwargs.get("description", "whole"), self.name))
+
+class PrankTree(TreeEstimator):
+        name = "prankTree"
+
+        def __init__(self, file_manager, **kwargs):
+                TreeEstimator.__init__(self, file_manager, **kwargs)
+
+        def _preprocess_input(self, alignment, **kwargs):
+                workdir_path = self.make_workdir(kwargs.get("tmp_dir"), kwargs.get("id", ""))
+                input_file = os.path.join(workdir_path, "input.fas")
+                alignment.write_to_path(input_file)
+
+                return workdir_path, input_file
+
+        def create_job(self, alignment, **kwargs):
+                wdir, input_file = self._preprocess_input(alignment, **kwargs)
+                result_file = os.path.join(wdir,"njtree")
+                command = [self.cmd, "-d=%s"%input_file, "-o=%s"%result_file, "-njtree", "-treeonly"]
+                _LOG.debug("command:%s"%" ".join(command))
+
+                if self.user_config is not None:
+                        command.extend(self.user_config)
+
+                def read_result(result_file):
+                        return None, file(result_file).read()
+
+                postp = lambda: read_result(result_file+".dnd")
+                #print " ".join(command)
+                return Job(command,
                            post_processor=postp,
                            cwd=wdir,
                            id=kwargs.get("id",""),
@@ -958,5 +993,5 @@ class Dnaml(TreeEstimator):#It only works for DNA
 
 ALIGNER_CLASS = [Prank, Mafft, ClustalW, Pagan]
 MERGER_CLASS = [MuscleMerger, PrankMerger]
-TREE_ESTIMATOR_CLASS = [FastTree, Raxml, PhyML, Dnaml]
+TREE_ESTIMATOR_CLASS = [FastTree, Raxml, PhyML, Dnaml, PrankTree]
 TRANSLATOR_CLASS= [Prank]

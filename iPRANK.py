@@ -317,7 +317,6 @@ def main():
 		tree_model = Config.user_config[Config.tree_estimator.name].get("%s.model"%Config.tree_estimator.name, "")
 
 		input_seqs, initial_tree, initial_score, is_multi_alignments, name_map = read_input_files()
-
 	        #Original input file
 		saved_input_path = store_result(input_seqs, "input", initial_tree, name_map=name_map)
 		input_transalte_path = None	
@@ -503,6 +502,12 @@ def main():
 			pass
 	
 def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
+	if initial_tree is not None:
+                phy_tree = PhylogeneticTree.read_from_string(initial_tree)
+                phy_tree.reroot_at_midpoint(update_splits=True)
+                phy_tree.resolve_polytomies()
+                initial_tree = phy_tree.as_newick_string()
+	
 	MESSENGER.send_info("Two phase sequence alignment and phylogenetic tree construction start..")
 	num_cpus = Config.main["num_cpus"]
 
@@ -510,22 +515,25 @@ def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
         if "prank.args" in Config.user_config['prank']:
                 prank_args = Config.user_config['prank']['prank.args']
         prank = Prank(tempFileManager, cmd=Config.user_config['prank']['prank.path'], args=prank_args)
+	tree_model = Config.user_config[Config.tree_estimator.name].get("%s.model"%Config.tree_estimator.name, "")
 
 	prank_start = time.time()
 	prank_temp = tempFileManager.create_subdir("twophase_prankGT")
 	if Config.main.get("without_guide", False):
 		prank_alignment = prank.run(alignment,
 					    description="prank_align_without_guide_tree",
+					    iterate=Config.main.get("max_iter",1),
                                             tmp_dir=prank_temp,
                                             delete_temps=False)
 	else:
 		prank_alignment = prank.run(alignment,
 					    description="prank_align_with_guide_tree",
+					    iterate=Config.main.get("max_iter",1),
                                             guide_tree=initial_tree,
                                             tmp_dir=prank_temp,
                                             delete_temps=False)
 
-        log_file = os.path.join(prank_temp, "temp_prank", "stdout.txt")
+        log_file = os.path.join(prank_temp, "_temp_prank", "stdout.txt")
         results = filter(lambda x: -1 != x.find("Alignment score:"), open(log_file).readlines())
         last_score = results[-1].split(':')[1].strip()
 
@@ -533,10 +541,14 @@ def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
 							    description="tree_estimate_on_prank_alignment",
                                                             tmp_dir=prank_temp,
                                                             num_cpus=num_cpus,
+							    model=tree_model,
                                                             delete_temps=delete_temps)  
 
 	store_result(prank_alignment,  'twophase_prankGT', prank_tree)
-        open(os.path.join(Config.work_directory, "twophase_prankGT_prank_score.txt"), 'w').write("%.5f %s"%(prank_score, last_score))
+	if Config.tree_estimator.name != "prankTree":
+                        with open(os.path.join(Config.work_directory, "twophase_prankGT_prank_score.txt"), 'w') as pscore:
+                                pscore.write("%.5f %s"%(prank_score, last_score))
+
 	prank_span = time.time() - prank_start  
 
 	MESSENGER.send_info("PRANKGT time:%.2g"%prank_span)
@@ -554,6 +566,7 @@ def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
                                                                   description="tree_estimate_on_clustalw_alignment",
                                                                   tmp_dir=clustalw_temp,
                                                                   num_cpus=num_cpus,
+								  model=tree_model,
                                                                   delete_temps=delete_temps)   
 
 	store_result(clustalw_alignment,  'twophase_clustalw', clustalw_tree)
