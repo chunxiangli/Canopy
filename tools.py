@@ -128,6 +128,7 @@ class Alignment(dict, object):
 		dict.__init__(self)
 		self._datatype = None
 		self.names = []
+		self.dna_freqs = None
 
 	@property
 	def datatype(self):
@@ -146,27 +147,27 @@ class Alignment(dict, object):
                 self.names = []
                 self.clear()
 
-	def copy_name(self):
-		new_align = Alignment()
-		new_align.names = self.names
-		return new_align
-
 	def update(self, align):
 		self._datatype = align.datatype
 		for name in align.names:
 			if name not in self.names:
 				self.names.append(name)
 			self[name] = align[name]
+
+		if self.dna_freqs is None:
+			self.dna_freqs = align.dna_freqs
 			
 	def append(self, align):
-		names = align.names
 		length = self.alignment_length()
-		for name in names:
+		for name in align.names:
 			try:
 				self[name] += align[name]
 			except KeyError:
 				self[name] = INDEL_CHAR*length+align[name] 
 				self.names.append(name)
+
+		if self.dna_freqs is not None:
+			self.dna_freqs = [ (self.dna_freqs[i] + align.dna_freqs[i])/2 for i in range(4)]
 
 	def get_sequence_names(self):
 		return self.names
@@ -177,7 +178,7 @@ class Alignment(dict, object):
 	def record_name(self, name, name_map=None):
 	        return	name_filter_and_encode(name, self.names, name_map)
 
-	def read_from_path(self, filename, file_format="fasta", data_type="DNA", keys=None, name_map=None):
+	def read_from_path(self, filename, file_format="fasta", data_type="DNA", keys=None, name_map=None, prefix=""):
                 if self.get_num_taxa() > 1:
                         self.reset()
 
@@ -203,6 +204,9 @@ class Alignment(dict, object):
 
 		if keys is not None:
 			self.names = keys
+
+		if self.datatype == "dna":
+			self.set_dna_freqs()
 
 		return name_map
 
@@ -250,6 +254,7 @@ class Alignment(dict, object):
 	def sub_alignment(self, keys):
 		sub_alignment = Alignment()
 		sub_alignment.datatype = self._datatype
+		sub_alignment.dna_freqs = self.dna_freqs
 
 		for key in keys:
 			if key in self.names:
@@ -278,6 +283,23 @@ class Alignment(dict, object):
 	def max_sequence_length(self):
 		return max(len(seq) for seq in self.values())
 
+	def set_dna_freqs(self):
+                dna_freq = [ 1 for i in xrange(4)]
+                base_list = ['A', 'C', 'G', 'T']
+                if self[self.names[0]][0].islower():
+                        base_list = [ a.lower() for a in base_list]
+
+                def base_count(seq):
+                        def count(i):
+                                dna_freq[i] = dna_freq[i] + 1
+
+                        for i in xrange(4):
+                                dna_freq[i] = dna_freq[i] + seq.count(base_list[i])
+		map(base_count, self.values())
+
+		total_num = sum(dna_freq)
+		self.dna_freqs = [ (num*1.0)/total_num for num in dna_freq]
+
 class MultiAlignments(dict, object):
 	def __init__(self):
 		dict.__init__(self)
@@ -297,16 +319,6 @@ class MultiAlignments(dict, object):
 		else:
 			raise ValueError("Datatype %s is not supported."%d)
 
-	def copy_name(self):
-		new_align = MultiAlignments()
-		new_align.names = self.names
-		new_align.num_taxa = self._num_taxa
-
-		for name in self.names:
-			new_align[name] = self[name].copy_name()
-
-		return new_align
-
         def reset(self):
                 self.names = []
                 self._num_taxa = 0
@@ -318,22 +330,26 @@ class MultiAlignments(dict, object):
 		self.names.append(new_name)
 		return new_name
 
-	def read_from_path(self, file_list, file_format="fasta", data_type="DNA"): 
+	def read_from_path(self, file_list, file_format="fasta", data_type="DNA", prefix=""): 
+		print 'read start',file_list
 		if self.num_taxa > 0:
                         self.reset()
 
-		self._datatype = data_type
+		self.datatype = data_type
 		name_map = {}
 
 		for filename in file_list:
 			alignment_name = os.path.splitext(os.path.basename(filename))[0].split("_translated")[0]
+			if prefix != "":
+				alignment_name = alignment_name.split(prefix)[1]
+			print alignment_name
 			new_name = self.record_name(alignment_name)
 			new_alignment = Alignment()
 			name_map = new_alignment.read_from_path(filename, file_format=file_format, data_type=self._datatype, name_map=name_map)
 			if not new_alignment.is_empty():
 				self[new_name] = new_alignment
 			self._num_taxa = len(name_map)
-
+		print 'read end'
 		return name_map
 
 	def write_to_path(self, file_path, file_format="fasta", name_suffix="", suppress_ancester=False, name_map=None):
@@ -410,3 +426,8 @@ class MultiAlignments(dict, object):
 	@num_taxa.setter
 	def num_taxa(self, num):
 		self._num_taxa = num
+
+if __name__ == "__main__":
+	a = Alignment()
+	a.read_from_path('/home/czli/Documents/thesis/iPRANK/bio1012/test_result/test_d50/input.fas')
+	print a.dna_freqs

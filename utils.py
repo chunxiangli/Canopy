@@ -425,9 +425,14 @@ class Prank(Aligner):
 		if "output_options" in kwargs:
 			command.extend(kwargs.get("output_options"))	
 
-		if self.user_config is None or len(filter(lambda x: -1 != x.find("-seed"), self.user_config)) < 0:
+		if self.user_config is None or len(filter(lambda x: -1 != x.find("-seed"), self.user_config)) < 1:
 			if DEBUG:
                         	command.append("-seed=1111111")
+
+		if self.user_config is None or len(filter(lambda x: -1 != x.find("-dnafreqs"), self.user_config)) < 1:
+			if alignment.datatype == "dna":
+				command.append("-dnafreqs=%s"%",".join([str(freq) for freq in alignment.dna_freqs]))
+
 		command.append("-tmp=%s"%wdir)
 		if num_taxa > 200:
 			command.append("-uselogs")
@@ -668,6 +673,10 @@ class PrankMerger(Merger):
 		if self.user_config is None or len(filter(lambda x: -1 != x.find("-seed"), self.user_config)) < 1:
                         if DEBUG:
                                 command.append("-seed=1111111")
+
+		if self.user_config is None or len(filter(lambda x: -1 != x.find("-dnafreqs"), self.user_config)) < 1:
+			if alignment1.datatype == "dna":
+				command.append("-dnafreqs=%s"%",".join([str(freq) for freq in alignment1.dna_freqs]))
 
 		if "output_options" in kwargs:
 			command.extend(kwargs.get("output_options"))	

@@ -574,6 +574,7 @@ class AlignMergeTree(object):
                         t1 = self._rChild.tree
 
                 _LOG.debug("%s rchild result:%d"%(self._rChild._kwargs.get("description"), a1.get_num_taxa()))
+		a1.dna_freqs = self._rChild._alignment.dna_freqs
                 self._rChild = None
 
                 if isinstance(result2, tuple):
@@ -583,6 +584,7 @@ class AlignMergeTree(object):
                         a2 = result2
                         t2 = self._lChild.tree
                 _LOG.debug("%s lchild result:%d"%(self._lChild._kwargs.get("description"), a2.get_num_taxa()))
+		a2.dna_freqs = self._lChild._alignment.dna_freqs
                 self._lChild = None
 
 		_LOG.debug("submerge:delete_temps:%s"%self._kwargs.get("delete_temps"))
