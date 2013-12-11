@@ -4,7 +4,7 @@ from logger import MESSENGER, get_logger
 from tools import Alignment, MultiAlignments, format_alignment_result_in_directory, alignment_accuracy
 from utils import ALIGNER_CLASS, MERGER_CLASS, TREE_ESTIMATOR_CLASS, TRANSLATOR_CLASS, translate_data, Prank, ClustalW
 from job import jobQueue, mainWorker
-from file_manage import TempFileManager, makeArchive, remove_files_from_dir
+from file_manage import TempFileManager, makeArchive, remove_files_from_dir, remove_files
 from coestimate import CoEstimator
 from tree import PhylogeneticTree, write_tree_to_file, robinson_foulds_distance, symmetric_difference
 
@@ -162,7 +162,7 @@ def store_result(alignment, prefix, tree_str=None, score=None, name_map=None):
 	if isinstance(alignment, MultiAlignments):
 		file_path = []
 		for name in alignment.names:
-			file_name = os.path.join(Config.work_directory, "%s_%s.fas"%(prefix, alignment.name_map[name]))
+			file_name = os.path.join(Config.work_directory, "%s_%s.fas"%(prefix, name))
 			file_path.append(file_name)
 	else:
 		file_name = os.path.join(Config.work_directory, "%s.fas"%(prefix))
@@ -337,7 +337,10 @@ def main():
 			if need_translator and align_datatype == "CODON":
 				translate_path = translate_data(Config.translator, saved_input_path, Config.work_directory)
 				initial_input_seqs.read_from_path(translate_path, data_type="PROTEIN")
-				os.remove(translate_path)
+				if is_multi_alignments:
+					remove_files(translate_path)
+				else:
+					os.remove(translate_path)
 			else:
 				initial_input_seqs = input_seqs
 
@@ -404,15 +407,10 @@ def main():
 		
 		co_temp = tempFileManager.create_subdir("divide_and_merge")
 
-		align_files = saved_input_path
-		if need_translator and align_datatype == "PROTEIN":
-			align_files = input_translate_path
-
 		coestimator = CoEstimator(Config.aligner,
 					  Config.merger,
 					  Config.tree_estimator,
 					  input_seqs,
-					  align_files,
 					  initial_tree,
                                           tempFileManager,
 					  score=initial_score,

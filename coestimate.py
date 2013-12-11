@@ -14,12 +14,10 @@ _LOG = get_logger(__name__)
 _DEFAULT_MAX_ITER = 5
 
 class CoEstimator(JobBase):
-	def __init__(self, aligner, merger, tree_estimator, alignment, align_files, tree, file_manager, **kwargs):
+	def __init__(self, aligner, merger, tree_estimator, alignment, tree, file_manager, **kwargs):
 		JobBase.__init__(self, **kwargs)
 		self._alignment = alignment
-		self._align_files = align_files
-		self._is_multi_alignments = isinstance(self._align_files, list)
-
+		self._is_multi_alignments = isinstance(self._alignment, MultiAlignments)
 		if self._is_multi_alignments:
                         self._num_taxa = alignment.num_taxa
                 else:  
@@ -65,7 +63,7 @@ class CoEstimator(JobBase):
 		return self._kwargs.get("max_prob_size", self._num_taxa) < self._num_taxa
 
 	def start(self):	
-		if self._align_files is None:
+		if self._kwargs.get("need_sub_iter", False):
 			self._subiter = True
 
 		self.run_time += 1
@@ -98,21 +96,21 @@ class CoEstimator(JobBase):
 				self.align(**k)
 
 				MESSENGER.send_info("Iteration %d: align done."%(self._cur_iter))
-
+				
 				#estimate new tree and check whether got improved
-				MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
-                                new_score = self._update_tree(cur_iter_work_tmp_dir)
-				MESSENGER.send_info("Iteration %d: tree estimation done."%(self._cur_iter))
+   				new_score = None
+                                if self._num_taxa > 3:
+                                        MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
+                                        new_score = self._update_tree(cur_iter_work_tmp_dir)
+                                        MESSENGER.send_info("Iteration %d: tree estimation done."%(self._cur_iter))
+                                        if not self._subiter:
+                                                self._store_iterational_tree_result(new_score)
 
-				if not self._subiter:
-					self._store_iterational_tree_result(new_score)
+                                        self._tree = self._new_tree
+                                else:   
+                                        _LOG.info("Can't use %s. The alignment size is smaller than 4."%self._tree_estimator.name)
+                                        self._best_iter = self._cur_iter
 
-				self._tree = self._new_tree
-
-				if not self._subiter:
-					self._align_files = self._iterational_result_files[self._cur_iter]
-					if not self._is_multi_alignments:
-						self._align_files = self._align_files[0]
 				#self._tree = self._best_tree
 
 				if "all" != self._save_option:
@@ -214,11 +212,10 @@ class CoEstimator(JobBase):
 		if self._is_multi_alignments:
                         for index, name in enumerate(self._alignment.names):
 				MESSENGER.send_info("Create align job for %s"%name)
-				_LOG.debug("align_file:%s alignment_name:%s"%(self._align_files[index],name))
-                                self._create_align_job_for_single_file(self._alignment[name], self._align_files[index], tree_dict[name], job_id=name, **kwargs)
+				self._create_align_job_for_single_data(self._alignment[name], tree_dict[name], job_id=name, **kwargs)
                 else:  
 			MESSENGER.send_info("Create align job")
-                        self._create_align_job_for_single_file(self._alignment, self._align_files, phy_tree, **kwargs)
+			self._create_align_job_for_single_data(self._alignment, phy_tree, **kwargs)
 
 		self.check_status()
 
@@ -245,7 +242,7 @@ class CoEstimator(JobBase):
 		_LOG.debug("Align done.")
 
 
-	def _create_align_job_for_single_file(self, alignment, align_file, phy_tree, job_id=None, **kwargs):
+	def _create_align_job_for_single_data(self, alignment, phy_tree, job_id=None, **kwargs):
                 dir_parent = kwargs.get("tmp_dir_parent", os.curdir)
                 max_prob_size = kwargs.get("max_prob_size", alignment.get_num_taxa())
                 job = None
@@ -264,7 +261,7 @@ class CoEstimator(JobBase):
 			kwargs["file_manager"] = self._file_manager
 			kwargs["datatype"] = alignment.datatype
 			kwargs["description"] = kwargs.get("description", "whole")
-			job = self._divide_and_merge(align_file, phy_tree, **kwargs)
+			job = self._divide_and_merge(alignment, phy_tree, **kwargs)
                 else:
                         guide_tree = phy_tree.as_newick_string()
 			old_tree = self._old_tree
@@ -370,11 +367,11 @@ class CoEstimator(JobBase):
 		optimal_prefix = "result"
 		copy_files(work_dir, source_prefix, optimal_prefix)
 
-	def _divide_and_merge(self, align_file, phy_tree, **kwargs):
+	def _divide_and_merge(self, alignment, phy_tree, **kwargs):
                 work_dir = kwargs.get("tmp_dir", os.curdir)
 		#generate the AlignMergeTree
 		_ALIGN_JOBS = []
-		alignMergeTree = AlignMergeTree(phy_tree, align_file, work_dir, self._aligner, self._merger, self._tree_estimator, **kwargs)
+		alignMergeTree = AlignMergeTree(phy_tree, alignment, work_dir, self._aligner, self._merger, self._tree_estimator, **kwargs)
 
 		if self._killed:
 				[ job.kill() for job in _ALIGN_JOBS]
@@ -458,11 +455,11 @@ class CoEstimator(JobBase):
 _MERGE_NODES = []
 _ALIGN_JOBS = []
 class AlignMergeTree(object):
-        def __init__(self, phy_tree, align_file, work_dir, aligner, merger, tree_estimator, **kwargs):
+        def __init__(self, phy_tree, alignment, work_dir, aligner, merger, tree_estimator, **kwargs):
                 self._phy_tree = phy_tree
 		self._num_taxa = self._phy_tree.num_taxa()
                 self._tree = phy_tree.as_newick_string()
-		self._align_file = align_file
+		self._alignment = alignment
 		self.aligner = aligner
 		self.merger = merger
 		self.tree_estimator = tree_estimator
@@ -507,20 +504,17 @@ class AlignMergeTree(object):
 			k = dict(self._kwargs)
 			file_manager = self._kwargs.get("file_manager")
 			rChild_wdir = file_manager.create_temp_subdir(self._work_dir, '0')
+			a1 = self._alignment.sub_alignment(t1.leaf_node_names())
 			k["description"] += '/0'
-			self._rChild = AlignMergeTree(t1, self._align_file, rChild_wdir, self.aligner, self.merger, self.tree_estimator, **k)
+			self._rChild = AlignMergeTree(t1, a1, rChild_wdir, self.aligner, self.merger, self.tree_estimator, **k)
 
 			lChild_wdir = file_manager.create_temp_subdir(self._work_dir, '1')
+			a2 = self._alignment.sub_alignment(t2.leaf_node_names())
 			k["description"] += '/1'
-			self._lChild = AlignMergeTree(t2, self._align_file, lChild_wdir, self.aligner, self.merger, self.tree_estimator, **k)
+			self._lChild = AlignMergeTree(t2, a2, lChild_wdir, self.aligner, self.merger, self.tree_estimator, **k)
 			_MERGE_NODES.append(self)
 		else:
-			_LOG.debug("subalign get alignment:%s"%self._align_file)
-			self._alignment = Alignment()
-			self._alignment.read_from_path(self._align_file,
-					               data_type=self._kwargs.get("datatype", "DNA"),
-                                                       keys=self._phy_tree.leaf_node_names(),
-						       name_map=self._kwargs.get("name_map", None))
+			_LOG.debug("subalign create job")
 			job = self._create_align_job()
 			jobQueue.put(job)
 

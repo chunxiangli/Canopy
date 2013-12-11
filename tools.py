@@ -152,9 +152,10 @@ class Alignment(dict, object):
 		return new_align
 
 	def update(self, align):
-		self.names = align.names
 		self._datatype = align.datatype
-		for name in self.names:
+		for name in align.names:
+			if name not in self.names:
+				self.names.append(name)
 			self[name] = align[name]
 			
 	def append(self, align):
@@ -281,7 +282,6 @@ class MultiAlignments(dict, object):
 	def __init__(self):
 		dict.__init__(self)
 		self.names = []
-		self.name_map = {}
 		self._num_taxa = 0
 
 	@property
@@ -300,7 +300,6 @@ class MultiAlignments(dict, object):
 	def copy_name(self):
 		new_align = MultiAlignments()
 		new_align.names = self.names
-		new_align.name_map = self.name_map
 		new_align.num_taxa = self._num_taxa
 
 		for name in self.names:
@@ -310,12 +309,14 @@ class MultiAlignments(dict, object):
 
         def reset(self):
                 self.names = []
-                self.name_map = {}
                 self._num_taxa = 0
                 self.clear()
 
 	def record_name(self, name):
-		return name_filter_and_encode(name, self.names, self.name_map)
+		#return name_filter_and_encode(name, self.names, self.name_map)
+		new_name = "".join(_DANGEROUS_CHARACTER.split(name))
+		self.names.append(new_name)
+		return new_name
 
 	def read_from_path(self, file_list, file_format="fasta", data_type="DNA"): 
 		if self.num_taxa > 0:
@@ -338,12 +339,12 @@ class MultiAlignments(dict, object):
 	def write_to_path(self, file_path, file_format="fasta", name_suffix="", suppress_ancester=False, name_map=None):
 		#TODO:Maybe only give the ouput directory
 		if isinstance(file_path, list):
-			len_file_path = len(file_path)
-			len_alignments = len(self)
+			num_file_path = len(file_path)
+			num_alignments = len(self)
 
-			assert len_file_path == len_alignments, "There are only %d filenames which is not enough for %d alignments."%(len_filenames, len_alignments)
+			assert num_file_path == num_alignments, "There are only %d finumames which is not enough for %d alignments."%(num_finumames, num_alignments)
 
-			for i in range(len_file_path):
+			for i in range(num_file_path):
 				alignment = self[self.names[i]]
 				with open(file_path[i], "w") as file_stream:
 					alignment.write_to_stream(file_stream,

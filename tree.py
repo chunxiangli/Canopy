@@ -81,19 +81,29 @@ class PhylogeneticTree(object):
 		return longest_internal_edge
 
 	def bipartition_by_edge(self, edge):
-		t1_len = 0
-		if edge.tail_node == self._tree.seed_node:
-                	t1_len = [i.length for i in self._tree.seed_node.incident_edges() if i != edge][0]
+		t2_len = 0
+                t1_len = edge.head_node.edge.length
+                t1 = None
+                t2 = None
 
-                t2_len = edge.head_node.edge.length
-		t = copy.deepcopy(self._tree)
-                self.prune_subtree(edge.head_node)
-                taxon = TaxonSet()
-		t2 = PhylogeneticTree(Tree(seed_node=edge.head_node))
-		t1 = PhylogeneticTree(self._tree)
-		self._tree = t
+                if edge.tail_node == self._tree.seed_node:
+                        edge1, edge2 =[e for e in edge.tail_node.incident_edges() if e.length != None]
+                        if edge1 != edge:
+                                t2_len = edge1.length
+                                edge2, edge1 = edge1, edge
+                        else:
+                                t2_len = edge2.length
+                        t2 = PhylogeneticTree(Tree(seed_node=edge2.head_node))
+                        t1 = PhylogeneticTree(Tree(seed_node=edge1.head_node))
+                else:
+                        t = copy.deepcopy(self._tree)
+                        self.prune_subtree(edge.head_node)
+                        t2 = PhylogeneticTree(Tree(seed_node=edge.head_node))
+                        t1 = PhylogeneticTree(self._tree)
+                        self._tree = t
 
                 return t1,t2, t1_len, t2_len
+
 
 	def bipartition_by_node(self, node):
 		assert not node.is_leaf(), "Cann't split a tree at a leaf node."	

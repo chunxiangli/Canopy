@@ -24,7 +24,7 @@ def translate_data(translator, seq_path, wdir, dna_path=None):
 	backtranslate = False
 	new_path = None
 
-	if dna_path is not None and os.path.isfile(dna_path):
+	if dna_path is not None:
 		backtranslate = True
 		
 	if isinstance(seq_path, list):
@@ -694,36 +694,6 @@ class TreeEstimator(Tool):
 	@staticmethod
 	def _read_results(result_file):
 		raise NotImplementedError("Abstract TreeEstimator class.")
-
-class PrankTree(TreeEstimator):
-	name = "prankTree"
-
-	def __init__(self, file_manager, **kwargs):
-		TreeEstimator.__init__(self, file_manager, **kwargs)
-
-	def _preprocess_input(self, alignment, **kwargs):
-		workdir_path = self.make_workdir(kwargs.get("tmp_dir"), kwargs.get("id", ""))
-		input_file = os.path.join(workdir_path, "input.fas")
-		alignment.write_to_path(input.file)
-		
-		return workdir_path, input_file
-
-	def create_job(self, alignment, **kwargs):
-		wdir, input_file = self._preprocess_input(alignment, **kwargs)
-		result_file = os.path.join(wdir, "njtree")
-		command = [self.cmd, "-d=%s"%input_file, "-o=%s"%result_file, "-njtree", "-treeonly"]	
-		_LOG.debug("command:%s"%" ".join(command))
-
-		def read_result(result_file):
-                        return None, file(result_file).read()
-
-                postp = lambda: read_result(result_file+".dnd")
-		
-		return Job(command,
-                           post_processor=postp,
-                           cwd=wdir,
-                           id=kwargs.get("id",""),
-                           description="%s_%s"%(kwargs.get("description", "whole"), self.name))
 
 class PrankTree(TreeEstimator):
         name = "prankTree"
