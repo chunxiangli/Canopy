@@ -196,16 +196,16 @@ class Alignment(dict, object):
 			name_map = {}
 
 		records = SeqIO.parse(file_obj, schema)
+
 		for re in records: 
 			new_name =self.record_name(re.id, name_map=name_map)
 			if keys is None or new_name in keys:
 				self[new_name] = str(re.seq)		
-		file_obj.close()
 
 		if keys is not None:
 			self.names = keys
 
-		if self.datatype == "dna":
+		if len(self) and self.datatype == "dna":
 			self.set_dna_freqs()
 
 		return name_map
@@ -331,7 +331,6 @@ class MultiAlignments(dict, object):
 		return new_name
 
 	def read_from_path(self, file_list, file_format="fasta", data_type="DNA", prefix=""): 
-		print 'read start',file_list
 		if self.num_taxa > 0:
                         self.reset()
 
@@ -342,14 +341,12 @@ class MultiAlignments(dict, object):
 			alignment_name = os.path.splitext(os.path.basename(filename))[0].split("_translated")[0]
 			if prefix != "":
 				alignment_name = alignment_name.split(prefix)[1]
-			print alignment_name
 			new_name = self.record_name(alignment_name)
 			new_alignment = Alignment()
 			name_map = new_alignment.read_from_path(filename, file_format=file_format, data_type=self._datatype, name_map=name_map)
 			if not new_alignment.is_empty():
 				self[new_name] = new_alignment
 			self._num_taxa = len(name_map)
-		print 'read end'
 		return name_map
 
 	def write_to_path(self, file_path, file_format="fasta", name_suffix="", suppress_ancester=False, name_map=None):
@@ -407,7 +404,6 @@ class MultiAlignments(dict, object):
 	def sub_alignment(self, keys):
 		sub_align = MultiAlignments()
 		sub_align.names = self.names
-		sub_align.name_map = self.name_map
 
 		for alignment_name in self.names:
 			sub_align[alignment_name] = self[alignment_name].sub_alignment(keys)
@@ -417,7 +413,9 @@ class MultiAlignments(dict, object):
 		return sub_align
 	
 	def is_empty(self):
-		return self.__len__() < 1
+		for name in self.names:
+			if self[name].__len__ < 1:
+				return True
 
 	@property
 	def num_taxa(self):
@@ -430,4 +428,3 @@ class MultiAlignments(dict, object):
 if __name__ == "__main__":
 	a = Alignment()
 	a.read_from_path('/home/czli/Documents/thesis/iPRANK/bio1012/test_result/test_d50/input.fas')
-	print a.dna_freqs

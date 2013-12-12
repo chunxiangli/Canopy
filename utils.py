@@ -200,11 +200,9 @@ def generate_prank_output(target_dir, source_dir, name_map, datatype, output_opt
 	if out_anc:
                 origin_tree_path = os.path.join(source_dir, prefix+"anc."+middle+"dnd")
                 result_anc_tree_path = os.path.join(target_dir, file_prefix+".anc.dnd")
-	print "read tree from %s"%origin_tree_path
         ot = PhylogeneticTree.read_from_path(origin_tree_path)
 	if restore:
 		ot.rename_leaf_names(name_map)
-	print "write tree"
 	with open(result_tree_path, 'w') as rtp:
 		ot.write(rtp, suppress_rooting=True, suppress_internal_node_labels=True)
 
@@ -236,7 +234,6 @@ def generate_prank_output(target_dir, source_dir, name_map, datatype, output_opt
 			if event_tree_str == "":
 				event_tree_str = events_list[3].strip()
                         ot = PhylogeneticTree.read_from_string(event_tree_str)
-			print "read from string 2"
 			if restore:
                         	ot.rename_leaf_names(name_map)
 

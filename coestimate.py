@@ -14,7 +14,7 @@ _LOG = get_logger(__name__)
 _DEFAULT_MAX_ITER = 5
 
 class CoEstimator(JobBase):
-	def __init__(self, aligner, merger, tree_estimator, alignment, tree, file_manager, **kwargs):
+	def __init__(self, aligner, merger, tree_estimator, alignment, tree, **kwargs):
 		JobBase.__init__(self, **kwargs)
 		self._alignment = alignment
 		self._is_multi_alignments = isinstance(self._alignment, MultiAlignments)
@@ -28,7 +28,7 @@ class CoEstimator(JobBase):
                 self._align_datatype = kwargs.get("align_datatype", "DNA")
 		self._tree_estimator = tree_estimator 
 		self._translator = kwargs.get("translator", None) 
-		self._file_manager = file_manager
+		self._file_manager = kwargs.get("file_manager")
 		self._save_option = kwargs.get("save_option", "rich")
 		self._best_score = kwargs.get("score", None)
 		self._subiter = False
@@ -63,7 +63,7 @@ class CoEstimator(JobBase):
 		return self._kwargs.get("max_prob_size", self._num_taxa) < self._num_taxa
 
 	def start(self):	
-		if self._kwargs.get("need_sub_iter", False):
+		if self._kwargs.get("need_sub_iter") is None:
 			self._subiter = True
 
 		self.run_time += 1
@@ -173,7 +173,6 @@ class CoEstimator(JobBase):
 			def score_improved(new_score):
 
                                 if self._tree_estimator.name == "prankTree":
-                                        print "score update:",self._prank_score, self._best_score
                                         if self._best_score is None:
                                                 self._best_score = self._prank_score
                                                 return True
@@ -181,7 +180,6 @@ class CoEstimator(JobBase):
                                                 self._best_score = self._prank_score
                                                 return True
                                 elif self._best_score is None or new_score > self._best_score:
-                                        print "raxml score update"
                                         self._best_score = new_score
                                         return True
                                 return False
@@ -196,7 +194,6 @@ class CoEstimator(JobBase):
 			_LOG.info("Can't use %s. The alignment size is smaller than 4."%self._tree_estimator.name)
                         self._best_iter = self._cur_iter
 
-		#print "get new tree done"
                 return new_score
 
 
@@ -258,7 +255,6 @@ class CoEstimator(JobBase):
                 align_work_dir = self._file_manager.create_temp_subdir(dir_parent, dir_name)
 		kwargs["tmp_dir"] = align_work_dir
                 if max_prob_size < phy_tree.num_taxa():
-			kwargs["file_manager"] = self._file_manager
 			kwargs["datatype"] = alignment.datatype
 			kwargs["description"] = kwargs.get("description", "whole")
 			job = self._divide_and_merge(alignment, phy_tree, **kwargs)
@@ -341,7 +337,7 @@ class CoEstimator(JobBase):
 				_LOG.debug("Just output the alignment result")
 				result_align_path = os.path.join(result_dir, "%s.%s"%(file_prefix, file_suffix))
 				if self._is_multi_alignments:
-					self._alignment[job.id].write_to_path(result_align_path)
+					self._alignment[job.id].write_to_path(result_align_path, name_map=self._name_map)
 				else:
 					self._alignment.write_to_path(result_align_path)
 				if self._best_score is not None:
@@ -528,11 +524,12 @@ class AlignMergeTree(object):
                         del k["need_sub_iter"]
                         del k["max_prob_size"]
 			del k["output_options"]
+			del k["name_map"]
                         k["tmp_dir"] = self._work_dir
 			if "score" in k:
 				del k["score"]
 
-                        job = CoEstimator(self.aligner, self.merger, self.tree_estimator, self._alignment, None, self._tree, **k)
+                        job = CoEstimator(self.aligner, self.merger, self.tree_estimator, self._alignment, self._tree, **k)
                 else:
                         guide_tree = self._tree
 			old_tree = self._kwargs.get("old_tree", None)

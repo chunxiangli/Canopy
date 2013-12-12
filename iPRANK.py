@@ -249,7 +249,7 @@ def read_input_files():
 		
 		#reading sequences
 		seq_path = Config.main["seq"]
-		err_msg = "Input sequence file is empty."
+		err_msg = "Didn't read any sequences."
 		if os.path.isdir(seq_path):
 			is_multi_alignments = True
 			seq_path = [ "%s/%s"%(seq_path, f) for f in os.listdir(seq_path) if not f.startswith(".")]
@@ -259,12 +259,13 @@ def read_input_files():
 			input_seqs = Alignment()
 
 		name_map = input_seqs.read_from_path(seq_path, input_format, data_datatype)
+
 		if name_map.keys() == name_map.values():
 			name_map = None	
 
 		if input_seqs.is_empty():
 			err_msg +="Please make sure the files' format are correctly specified."
-			MESSENGER.send_error(err_msg)	
+			#MESSENGER.send_error(err_msg)	
 			raise ValueError(err_msg)
 
 		initial_phy_tree = None
@@ -412,7 +413,7 @@ def main():
 					  Config.tree_estimator,
 					  input_seqs,
 					  initial_tree,
-                                          tempFileManager,
+                                          file_manager=tempFileManager,
 					  score=initial_score,
 					  tmp_dir=co_temp,
 					  model=tree_model,
