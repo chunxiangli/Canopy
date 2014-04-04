@@ -1,0 +1,83 @@
+#!/bin/bash -l
+ORIGIN_AUTHOR='Alan Medlar'
+ERRORFILE='error.log'
+COLOR="\033"
+ENV="env"
+
+run(){
+	printf "$COLOR[94m$*\n$COLOR[0m"
+	$@ > /dev/null 2> $ERRORFILE
+
+	if [[ $? != 0 ]] ; then
+		printf "$COLOR[91m\tFAILED (stderr was redirected to $ERRORFILE)\n$COLOR[0m"
+		exit 1
+	fi
+
+	rm -f $ERRORFILE
+}
+
+out(){
+	printf "$COLOR[92m$*\n$COLOR[0m"
+}
+
+updatePath(){
+	echo 'export PATH=$PATH:$HOME/.local/bin' >> ~/.bashrc
+	source ~/.bashrc
+}
+
+if [[ -d $ENV ]] ; then
+	out Directory ./$ENV exits, delete directory and return this script
+	exit 1
+fi
+
+#check if pip is installed
+if [[ ! `which pip 2> /dev/null` ]]; then
+	out Could not find pip, installing...
+
+	if [[ ! `which easy_install 2> /dev/null` ]]; then
+		out Could not find easy_install, installing...
+		run wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py
+		run python ez_setup.py --user
+		run rm ez_setup.py	
+
+		updatePath
+
+		run easy_install --user pip
+	else	
+		run easy_install --user pip
+
+		updatePath
+	fi
+fi
+
+#check if virtualenv is installed
+if [[ ! `which virtualenv 2> /dev/null` ]] ; then
+	out Could not find virtualenv, installing...
+	run pip install --user virtualenv
+fi
+
+#create new enviroment
+out Creating virtual environment
+run virtualenv $ENV
+
+#activate
+out Activating...
+run source $ENV/bin/activate
+
+#install requested pakages
+out Installing python packages...
+#run pip install numpy
+run pip install numpy
+run pip install -I biopython==1.60
+run pip install -I dendropy==3.12.0
+
+
+printf "$COLOR[94m\nA virtual python environment has been set up in ./env.\n"
+printf "$COLOR[94mThe way you use this is to type the following command (or include in a job script)\n"
+printf "$COLOR[94meverytime you run your program:\n"
+printf "$COLOR[91m\t\$ source ./$ENV/bin/activate\n\n"
+printf "$COLOR[94mIf you need to add any other packages, use pip after you have activated the environment:\n"
+printf "$COLOR[91m\t\$ pip install package_name\n\n"
+printf "$COLOR[94mIf you want to restore your enviroment, just type:\n"
+printf "$COLOR[91m\t\$ deactivate\n\n"
+printf "$COLOR[0m"
