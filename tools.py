@@ -13,7 +13,7 @@ _LOG = get_logger(__name__)
 
 INDEL_CHAR = '-'
 _INDEL = re.compile(r'-')
-_ILLEGAL_TREE_CHARACTER = re.compile(r'[\.\(\):\[\]]')
+_ILLEGAL_TREE_CHARACTER = re.compile(r'[\(\)\[\]\;]')
 _DANGEROUS_CHARACTER = re.compile(r'[^#-_a-zA-Z0-9]')
 
 def format_alignment_result_in_directory(directory, format="phylip", datatype="DNA", filter_files=None):
@@ -149,6 +149,7 @@ class Alignment(dict, object):
 
 	def update(self, align):
 		self._datatype = align.datatype
+
 		for name in align.names:
 			if name not in self.names:
 				self.names.append(name)
@@ -159,11 +160,16 @@ class Alignment(dict, object):
 			
 	def append(self, align):
 		length = self.alignment_length()
+		is_aligned = self.is_aligned()
+
 		for name in align.names:
 			try:
 				self[name] += align[name]
 			except KeyError:
-				self[name] = INDEL_CHAR*length+align[name] 
+				if is_aligned:
+					self[name] = INDEL_CHAR*length+align[name] 
+				else:
+					self[name] = align[name]
 				self.names.append(name)
 
 		if self.dna_freqs is not None:
@@ -378,9 +384,11 @@ class MultiAlignments(dict, object):
 	def concatenate(self):
 		concatenated_alignment = Alignment()
 		concatenated_alignment.datatype = self[self.names[0]].datatype
+		is_aligned = self[self.names[0]].is_aligned()
 
 		try:
-			for alignment_name in self.names:
+			for alignment_name in sorted(self.names):
+				print alignment_name
 				old_names = concatenated_alignment.names
 				alignment = self[alignment_name]
 				if len(concatenated_alignment) < 1:
@@ -389,11 +397,11 @@ class MultiAlignments(dict, object):
 					concatenated_alignment.append(alignment)
 				append_length = alignment.alignment_length()
 				append_names = alignment.names
-
-				#complete the alignment with gaps
-				for name in old_names:
-					if not name in append_names:
-						concatenated_alignment[name]+=append_length*INDEL_CHAR
+				
+				if is_aligned:#complete the alignment with gaps
+					for name in old_names:
+						if not name in append_names:
+							concatenated_alignment[name]+=append_length*INDEL_CHAR
 		except Exception as e:
 			_LOG.error("Error happend during concatenate:%s"%str(e))
 			raise e
@@ -424,7 +432,3 @@ class MultiAlignments(dict, object):
 	@num_taxa.setter
 	def num_taxa(self, num):
 		self._num_taxa = num
-
-if __name__ == "__main__":
-	a = Alignment()
-	a.read_from_path('/home/czli/Documents/thesis/iPRANK/bio1012/test_result/test_d50/input.fas')

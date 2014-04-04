@@ -231,5 +231,4 @@ def symmetric_difference(tree_str1, tree_str2):
 		return -1
 
 	taxon = TaxonSet()
-
 	return treecalc.symmetric_difference(Tree(stream=StringIO(tree_str1), schema='newick', taxon_set=taxon), Tree(stream=StringIO(tree_str2), schema='newick', taxon_set=taxon))

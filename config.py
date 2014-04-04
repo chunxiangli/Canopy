@@ -157,7 +157,7 @@ class ConfigAndOptionParser(dict, object):
 		g.append(Option('config_export_path', '--config_export_path', group='main', help="the file for saving user's configure"))
 		g.append(Option('without_guide', '--without_guide', group='main', help="Don't provide guide tree to align procedure.", action='store_true'))
 		g.append(Option('decomposite_strategy', '--decomposite_strategy', type='choice', choices=['longest', 'seed'], group='main', help='The strategy for the decomposition of root tree. longest: remove the longest branch to split a tree into two parts; seed: split a tree by removing the seed node.'))
-		g.append(Option('save_option', '--save_option', group='main', type='choice', choices=['simple', 'rich', 'all'], help='Options for saving temp files. simple: only store input, initial and final alignments and trees; rich: additionally store alignments and trees for all iterations; all: all tmp files will be compressed in a single file.Default:rich'))
+		g.append(Option('save_option', '--save_option', group='main', type='choice', choices=['simple', 'rich', 'all'], help='Options for saving temp files. simple: only store input, initial and final alignments and trees; rich: additionally store alignments and trees for all iterations; all: all tmp files will be compressed in a single file.Default:simple'))
 		g.append(Option('showanc', '--showanc', group='main', help='output ancestral sequences.', action='store_true'))
 		g.append(Option('showevents', '--showevents', group='main', help='output evolutioanry events', action='store_true'))
 		g.append(Option('showxml', '--showxml', group='main', help='output xml-files', action='store_true'))

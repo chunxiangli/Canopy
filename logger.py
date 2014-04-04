@@ -37,17 +37,6 @@ MESSENGER = Messenger()
 _LOGGING_LEVEL_EVAR = "LOGGING_LEVEL"
 _LOGGING_FORMAT_EVAR = "LOGGING_FORMAT"
 
-# global debugging flag
-if "DEBUG" in os.environ:
-    if os.environ["DEBUG"]:
-        if os.environ["DEBUG"].lower()[0] in ["1", "t", "y", "d"]:
-            GLOBAL_DEBUG = True
-        else:
-            GLOBAL_DEBUG = False
-    else:
-        GLOBAL_DEBUG = False
-else:
-    GLOBAL_DEBUG = False
 
 def get_logging_level():
     """

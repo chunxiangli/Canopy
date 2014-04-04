@@ -490,7 +490,7 @@ class Mafft(Aligner):
 
 		#TODO:just comment at test
 		'''
-		if unaligned_seqs.get_num_taxa() < 200 and unaligned_seqs.max_sequence_length() < 10000:
+		if unaligned_seqs.get_num_taxa() < 200 and unaligned_seqs.max_sequence_length() < 2000:
 			command.extend(["--localpair", "--maxiterate", "1000"])
 		'''
 
@@ -678,6 +678,7 @@ class PrankMerger(Merger):
 		if "output_options" in kwargs:
 			command.extend(kwargs.get("output_options"))	
 
+		command.append("-tmp=%s"%wdir)
 		_LOG.debug("command:%s"%" ".join(command))	
 		#Prank version 130129 rename the output name without index number
 		return self._add_postprocessor(result_file=output+self.result_suffix,
