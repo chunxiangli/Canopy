@@ -170,21 +170,32 @@ def store_result(alignment, prefix, tree_str=None, score=None, name_map=None):
 
 	alignment.write_to_path(file_path, name_map=name_map)
 
-        if tree_str is not None:
-                tree_schema = Config.main.get("tree_format", "newick")
-                if tree_schema == "nexus":
-                        suffix = ".nex"
-                st_file = os.path.join(Config.work_directory, prefix+suffix)
+	def write_tree(t_str, mid=""):
+		st_file = os.path.join(Config.work_directory, prefix+mid+suffix)
                 if name_map:
-                        phy_tree = PhylogeneticTree.read_from_string(tree_str)
+                        phy_tree = PhylogeneticTree.read_from_string(t_str)
                         phy_tree.rename_leaf_names(name_map)
                         write_tree_to_file(phy_tree, st_file, schema=tree_schema)
                 else:
                         write_tree_to_file(tree_str, st_file, schema=tree_schema)
 
+        if tree_str is not None:
+                tree_schema = Config.main.get("tree_format", "newick")
+                if tree_schema == "nexus":
+                        suffix = ".nex"
+		if isinstance(tree_str, dict):
+			[write_tree(tree_str[name], '_'+name) for name in tree_str]
+		else:
+			write_tree(tree_str)
+	def write_score(sc, mid=""):
+		with open(os.path.join(Config.work_directory, "%s%s_score.txt"%(prefix, mid)),'w') as score_file:
+                        score_file.write("%.10f"%sc)
+                
 	if score is not None:
-		with open(os.path.join(Config.work_directory, "%s_score.txt"%prefix),'w') as score_file:
-			score_file.write("%.10f"%score)
+		if isinstance(score, dict):
+			[ write_score(score[name], '_'+name) for name in score ]
+		else:
+			write_score(score)
 
 	return file_path
 
@@ -193,7 +204,7 @@ def create_tools(tmpFileM, need_translator):
 		tool_args = args
 		option_name = "%s.args"%(tool_class.name)
 
-		if tool_class.name == "prank" and Config.main.get("align_datatype", "DNA") == "CODON":
+		if tool_class.name == "prank" and Config.main.get("align_datatype", None) == "CODON":
 			tool_args += " -codon "
 
 		if option_name in Config.user_config[tool_class.name]:
@@ -240,46 +251,48 @@ def read_input_files():
 	initial_tree = None
 
 	try:
-		if "score" in Config.main:
-			initial_score = float(Config.main["score"])
-
+		
 		data_datatype = Config.main.get("datatype", "DNA")
 		input_format = Config.main.get("format", "fasta")
 
 		
 		#reading sequences
 		seq_path = Config.main["seq"]
-		err_msg = "Didn't read any sequences."
+		err_msg = "Input sequence file is empty."
 		if os.path.isdir(seq_path):
 			is_multi_alignments = True
 			seq_path = [ "%s/%s"%(seq_path, f) for f in os.listdir(seq_path) if not f.startswith(".")]
 			input_seqs = MultiAlignments()	
-			err_msg = "All of the input sequence files are empty."
 		elif os.path.isfile(seq_path):
 			input_seqs = Alignment()
 
 		name_map = input_seqs.read_from_path(seq_path, input_format, data_datatype)
-
 		if name_map.keys() == name_map.values():
 			name_map = None	
 
 		if input_seqs.is_empty():
 			err_msg +="Please make sure the files' format are correctly specified."
-			#MESSENGER.send_error(err_msg)	
+			MESSENGER.send_error(err_msg)	
 			raise ValueError(err_msg)
 
-		initial_phy_tree = None
- 		if "tree" in Config.main:
-			initial_phy_tree = PhylogeneticTree.read_from_path(os.path.expanduser(Config.main["tree"]))
-		elif input_format == "nexus" and not is_multi_alignments:
-			initial_phy_tree = PhylogeneticTree.read_from_path(seq_path, "nexus")
+		if not is_multi_alignments:	
+			initial_phy_tree = None
+			if "tree" in Config.main:
+				initial_phy_tree = PhylogeneticTree.read_from_path(os.path.expanduser(Config.main["tree"]))
+			elif input_format == "nexus":
+				initial_phy_tree = PhylogeneticTree.read_from_path(seq_path, "nexus")
 
-		if initial_phy_tree is not None:
-			#Also need to encode leaf names
-			if name_map is not None:
-				initial_phy_tree.rename_leaf_names(name_map, restore=False)
-			initial_tree = initial_phy_tree.as_newick_string()
-			Config.main["tree"] = initial_tree
+			if "score" in Config.main:
+				initial_score = float(Config.main["score"])
+
+
+			if initial_phy_tree is not None:
+				#Also need to encode leaf names
+				if name_map is not None:
+					initial_phy_tree.rename_leaf_names(name_map, restore=False)
+				initial_tree = initial_phy_tree.as_newick_string()
+				Config.main["tree"] = initial_tree
+		#TODO:whether need to accept initial tree and initial score for multiple alignments
 
 		return input_seqs, initial_tree, initial_score, is_multi_alignments, name_map
 
@@ -300,7 +313,7 @@ def main():
 	for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]:
         	signal_and_handler.append((sig, signal.signal(sig, signal_handler)))
 
-	save_option = Config.main.get("save_option", "rich")
+	save_option = Config.main.get("save_option", "simple")
 	delete_temps = True
         if "all" == save_option:
                 delete_temps = False
@@ -308,9 +321,9 @@ def main():
 
 	try:
 		data_datatype = Config.main.get("datatype", "DNA")
-		align_datatype = Config.main.get("align_datatype", "DNA")
+		align_datatype = Config.main.get("align_datatype", None)
 		need_translator = False
-		if align_datatype != data_datatype:
+		if align_datatype is not None and align_datatype != data_datatype:
 			need_translator = True
 
 		create_tools(tempFileManager, need_translator)
@@ -318,12 +331,13 @@ def main():
 		tree_model = Config.user_config[Config.tree_estimator.name].get("%s.model"%Config.tree_estimator.name, "")
 
 		input_seqs, initial_tree, initial_score, is_multi_alignments, name_map = read_input_files()
+
 	        #Original input file
 		saved_input_path = store_result(input_seqs, "input", initial_tree, name_map=name_map)
 		input_transalte_path = None	
 		if need_translator and align_datatype == "PROTEIN":
 			input_translate_path = translate_data(Config.translator, saved_input_path, Config.work_directory)
-			input_seqs.read_from_path(input_translate_path, data_type="PROTEIN")
+			input_seqs.read_from_path(input_translate_path, data_type="PROTEIN", prefix="input_")
 			MESSENGER.send_info("The input sequences have been translated into %s."%(align_datatype.lower()))
 
 		num_cpus = Config.main["num_cpus"]
@@ -337,7 +351,7 @@ def main():
 			initial_input_seqs = type(input_seqs)()
 			if need_translator and align_datatype == "CODON":
 				translate_path = translate_data(Config.translator, saved_input_path, Config.work_directory)
-				initial_input_seqs.read_from_path(translate_path, data_type="PROTEIN")
+				initial_input_seqs.read_from_path(translate_path, data_type="PROTEIN", prefix="input_")
 				if is_multi_alignments:
 					remove_files(translate_path)
 				else:
@@ -346,9 +360,10 @@ def main():
 				initial_input_seqs = input_seqs
 
 			if is_multi_alignments:
+				initial_score = {}
+				initial_tree = {}
+				_RunningJob = []
 				for name in initial_input_seqs.names:
-					if _RunningJob is None:
-						_RunningJob = []
 					job  = Config.initial_aligner.create_job(initial_input_seqs[name],
 										 id=name,
 										 tmp_dir=initial_temp,
@@ -359,7 +374,24 @@ def main():
 				for job in _RunningJob:
 					initial_input_seqs[job.id].update(job.get_result())
 
-				initial_alignment = initial_input_seqs.concatenate()
+				_RunningJob = None
+				MESSENGER.send_info("Initial alignment done.")
+
+				for name in initial_input_seqs:
+					MESSENGER.send_info("Initial tree estimation start...")
+					tree_estimate_job = Config.tree_estimator.create_job(initial_input_seqs[name],
+									id=name,
+									tmp_dir=initial_temp,
+									num_cpus=num_cpus,
+									delete_temps=delete_temps,
+									model=tree_model)
+					_RunningJob = tree_estimate_job
+					jobQueue.put(tree_estimate_job)
+					initial_score[name], initial_tree[name] = tree_estimate_job.get_result()
+					_RunningJob = None	
+					MESSENGER.send_info("Initial tree estimation done.")
+													
+					
 			else:
 				job  = Config.initial_aligner.create_job(initial_input_seqs,
 									 tmp_dir=initial_temp,
@@ -368,32 +400,23 @@ def main():
 				_RunningJob = job
 				jobQueue.put(job)
 				initial_input_seqs.update(job.get_result())
-				initial_alignment = initial_input_seqs
+				_RunningJob = None
+				MESSENGER.send_info("Initial alignment done.")
 
-			MESSENGER.send_info("Initial alignment done.")
-
-			_RunningJob = None
-
-			MESSENGER.send_info("Initial tree estimation start...")
-
-			job = Config.tree_estimator.create_job(initial_alignment,
+				MESSENGER.send_info("Initial tree estimation start...")
+				job = Config.tree_estimator.create_job(initial_input_seqs,
 							       tmp_dir=initial_temp,
 							       num_cpus=num_cpus,
 							       delete_temps=delete_temps,
 							       model=tree_model)
-			_RunningJob = job
-			jobQueue.put(job)
-			initial_score, initial_tree = job.get_result()
-			_RunningJob = None
-
-			MESSENGER.send_info("Initial tree estimation done.")
-
-			if not Config.main.get("test", False):
-				initial_alignment = None
-
+				_RunningJob = job
+				jobQueue.put(job)
+				initial_score, initial_tree = job.get_result()
+				MESSENGER.send_info("Initial tree estimation done.")
+			
 			saved_initial_result_path = store_result(initial_input_seqs, "initial", initial_tree, initial_score, name_map)
 
-			if align_datatype == "CODON":
+			if not Config.main.get("test", False):
 				initial_input_seqs = None
 
 			if need_translator:
@@ -405,42 +428,82 @@ def main():
 		MESSENGER.send_info("Iterative coestimation start...")
 
 		start_co = time.time()
-		
-		co_temp = tempFileManager.create_subdir("divide_and_merge")
+		def coestimate_single(input, tree, score, name=""):		
+			co_temp = tempFileManager.create_subdir("divide_and_merge%s"%('_'+name))
 
-		coestimator = CoEstimator(Config.aligner,
-					  Config.merger,
-					  Config.tree_estimator,
-					  input_seqs,
-					  initial_tree,
-                                          file_manager=tempFileManager,
-					  score=initial_score,
-					  tmp_dir=co_temp,
-					  model=tree_model,
-                                          delete_temps=delete_temps,
-                                          translator=getattr(Config, "translator", None),
-					  num_cpus=num_cpus,
-					  max_prob_size=Config.main.get("max_prob_size"),
-					  need_sub_iter=Config.main.get("need_sub_iter", False),
-					  save_option=save_option, 
-					  without_guide=Config.main.get("without_guide",False),
-					  decomposition=Config.main.get("decomposite_strategy","seed"),
-					  align_datatype=align_datatype,
-					  tree_format=Config.main.get("tree_format", "newick"),
-					  output_options=Config.main.get("output_options",[]),
-					  name_map=name_map)
+			coestimator = CoEstimator(Config.aligner,
+						  Config.merger,
+						  Config.tree_estimator,
+						  input,
+						  tree,
+						  file_manager=tempFileManager,
+						  score=score,
+						  tmp_dir=co_temp,
+						  model=tree_model,
+						  delete_temps=delete_temps,
+						  translator=getattr(Config, "translator", None),
+						  num_cpus=num_cpus,
+						  max_prob_size=Config.main.get("max_prob_size"),
+						  need_sub_iter=Config.main.get("need_sub_iter", False),
+						  save_option=save_option, 
+						  without_guide=Config.main.get("without_guide",False),
+						  decomposition=Config.main.get("decomposite_strategy","seed"),
+						  align_datatype=align_datatype,
+						  tree_format=Config.main.get("tree_format", "newick"),
+						  output_options=Config.main.get("output_options",[]),
+						  id=name,
+						  name_map=name_map)
 
-		_RunningJob = coestimator
-		coestimator.start()	
-		saved_result_path, best_tree, best_score = coestimator.get_result()
-		input_seqs = None
-		_RunningJob = None
+			_RunningJob = coestimator
+			coestimator.start()	
+			result_path, result_tree, result_score = coestimator.get_result()
+			_RunningJob = None
+
+			return result_path, result_tree, result_score
+
+		saved_result_path = None
+		best_tree = None
+		best_score = None
+		if is_multi_alignments:
+			saved_result_path={}
+			best_tree = {}
+			best_score = {}
+			for name in input_seqs:
+				saved_result_path[name], best_tree[name], best_score[name] = coestimate_single(input_seqs[name], initial_tree[name], initial_score[name],name)	
+			#infer species tree
+			input_seqs.read_from_path(saved_result_path.values(), data_type=input_seqs.datatype)
+			MESSENGER.send_info("Species tree inference start...")
+			concatenate_result = input_seqs.concatenate()
+			species_temp = tempFileManager.create_subdir("species_tree_estimator")
+			tree_estimate_job = Config.tree_estimator.create_job(concatenate_result,
+							tmp_dir=species_temp,
+							num_cpus=num_cpus,
+							delete_temps=delete_temps,
+							model=tree_model)
+			_RunningJob = tree_estimate_job
+			jobQueue.put(tree_estimate_job)
+			species_score, species_tree = tree_estimate_job.get_result()
+			saved_concatenate_result = store_result(concatenate_result, "species", species_tree, species_score, name_map=name_map)
+			concatenate_result = None
+			_RunningJob = None 
+                        MESSENGER.send_info("Species tree inference done.")
+	
+		else:
+			saved_result_path, best_tree, best_score = coestimate_single(input_seqs, initial_tree, initial_score)
 
                 #If the alignment target is PROTEIN while the input sequences are in DNA, we need back translate the final result into DNA.
 		translate_result_path = None
                 if need_translator and align_datatype == "PROTEIN":
 			_LOG.debug("need back translate")
+			if is_multi_alignments:
+				saved_result_path = saved_result_path.values()	
+
                         translate_result_path = translate_data(Config.translator, saved_result_path, Config.work_directory, dna_path=saved_input_path)
+
+			if is_multi_alignments:
+				input_seqs.read_from_path(translate_result_path,data_type="DNA", prefix="result_") 				
+				input_seqs.write_to_path(os.path.join(Config.work_directory, 'species_translated.fas'), name_map=name_map)
+				
 			_LOG.debug("finish back translate")
 
 		if "output_format" in Config.main:
@@ -465,7 +528,7 @@ def main():
 		MESSENGER.send_info("Iterative coestimation Finished.\n Time:%.2g"%iprank_span)
 
 		if Config.main.get("test", False):
-			two_phase(initial_tree, tempFileManager, initial_alignment, delete_temps)
+			two_phase(initial_tree, tempFileManager, input_seqs, delete_temps)
 
 		#deal with tempfiles
 		_LOG.info("save_option %s"%save_option)
