@@ -32,7 +32,7 @@ def translate_data(translator, seq_path, wdir, dna_path=None):
 		for path in seq_path:
 			if backtranslate:
 				file_common_substr = "_".join(os.path.basename(path).split("_")[1:])
-				dnafile = filter(lambda x: -1 != x.find(file_common_substr), dna_path)[0]
+				dnafile = filter(lambda x: file_common_substr in x, dna_path)[0]
 				args = "-dna=%s"%dnafile
 			translated_file_path = translator.translate(path, wdir, args=args)
 			new_path.append(translated_file_path)
@@ -66,7 +66,7 @@ def read_raxml_results(workdir, del_dirs, file_manager):
         raxml_log = os.path.join(workdir, "RAxML_log.%s"%tree_id)
 	with open(raxml_log, "rU") as log_file:
 		#TODO;need to check how to read the score for other model
-        	log_score = filter(lambda x: -1 != x.find("Final GAMMA_based Score of best tree"), log_file.readlines()) 
+        	log_score = filter(lambda x: "Final GAMMA_based Score of best tree" in x, log_file) 
 
         score = None
         if log_score:
@@ -91,7 +91,7 @@ def read_fasttree_results(result_file, workdir, del_dirs, file_manager):
 		tree_str = re.sub("\)[0-9.]*:","):", tree_file.read(-1).strip("\n"))
 
 	with open(workdir+"/stderr.txt", 'r') as log_file:
-		log_score = filter(lambda x: -1 != x.find("Optimize all lengths:"), log_file.readlines())
+		log_score = filter(lambda x: "Optimize all lengths:" in x, log_file)
 
 	score = None
 	if log_score:
@@ -110,12 +110,12 @@ def read_phyml_results(workdir, del_dirs, file_manager):
 	tree_str = ""
 
         for f in file_list:
-                if -1 != f.find("stats"):
+		if "stats" in f:
                         prefix_id = f.split("stats")
                         break
 
 	with open(os.path.join(workdir, "{0}stats{1}".format(prefix_id[0], prefix_id[1])), 'rU') as log_file:
-        	log_score = filter(lambda x: -1 != x.find("Log-likelihood:"), log_file.readlines())
+		log_score = filter(lambda x: "Log-likelihood:" in x, log_file)
 
         score = None
         if log_score:
@@ -135,7 +135,7 @@ def read_dnaml_results(workdir, del_dirs, file_manager):
 	tree_str = ""
 
 	with open(os.path.join(workdir, "outfile")) as log_file:
-		log_score = filter(lambda x: -1 != x.find("Ln Likelihood"), log_file.readlines())
+		log_score = filter(lambda x: "Ln Likelihood" in x, log_file)
 
 	score = None
 	if log_score:
@@ -159,16 +159,16 @@ def generate_prank_output(target_dir, source_dir, name_map, datatype, output_opt
 		restore=False
 
         for f in file_list:
-		if f.endswith("anc.best.fas"):
+		if "anc.best.fas" in f:
                         prefix = f.split("anc.best.fas")[0]
 			middle = "best."
-		elif f.endswith("best.fas"):
+		elif "best.fas" in f:
                         prefix = f.split("best.fas")[0]
 			middle = "best."
-                elif f.endswith("anc.fas"):
+                elif "anc.fas" in f:
                         prefix = f.split("anc.fas")[0]
                         break
-                elif f.endswith(align_file_suffix):
+                elif align_file_suffix in f:
                         prefix = f.split("fas")[0]
 
         if file_prefix is None:
@@ -212,16 +212,15 @@ def generate_prank_output(target_dir, source_dir, name_map, datatype, output_opt
 			ot.write(ratp, suppress_rooting=True)
 
         def replace_from_dict(str):
-                if file_type == "events" and -1 != str.find("branch "):
+                if file_type == "events" and str.startswith("branch"):
                         prefix, name = str.strip().split()
                         if name in name_map:
                                 str = '%s %s\n'%(prefix, name_map[name])
-                elif file_type == "xml" and -1 != str.find("name="):
+                elif file_type == "xml" and "name=" in str:
                                 prefix, name = str.split('name="')
                                 name = name.strip('">\n')
                                 str = '%s name="%s">\n'%(prefix, name_map[name])
                 return str
-
         if "-showevents" in output_options:
                 #events
                 origin_events_path = os.path.join(source_dir, prefix+middle+"events")
@@ -236,20 +235,18 @@ def generate_prank_output(target_dir, source_dir, name_map, datatype, output_opt
                         ot = PhylogeneticTree.read_from_string(event_tree_str)
 			if restore:
                         	ot.rename_leaf_names(name_map)
-
-                raep_events = map(replace_from_dict, events_list[5:])
+                raep_events = map(replace_from_dict, events_list[4:])
                 with open(result_events_path, 'w') as rep:
                         rep.write("Alignment topology with node labels:\n\n%s\n"%ot.as_newick_string())
 			rep.writelines(raep_events)
-
         if "-showxml" in output_options:
                 #xml
                 origin_xml_path = os.path.join(source_dir, prefix+middle+"xml")
                 result_xml_path = os.path.join(target_dir, file_prefix + ".xml")
                 file_type = "xml"
                 with open(result_xml_path, 'w') as rxp:
-                        rxp.writelines(map(replace_from_dict, file(origin_xml_path).readlines()))
-
+                        rxp.writelines(map(replace_from_dict, file(origin_xml_path)))
+	
 	_LOG.debug("finish generate prank output")
 
 	return result_align_path
@@ -422,11 +419,11 @@ class Prank(Aligner):
 		if "output_options" in kwargs:
 			command.extend(kwargs.get("output_options"))	
 
-		if self.user_config is None or len(filter(lambda x: -1 != x.find("-seed"), self.user_config)) < 1:
+		if self.user_config is None or not "-seed" in "".join(self.user_config):
 			if DEBUG:
                         	command.append("-seed=1111111")
 
-		if self.user_config is None or len(filter(lambda x: -1 != x.find("-dnafreqs"), self.user_config)) < 1:
+		if self.user_config is None or not "-dnafreqs" in "".join(self.user_config):
 			if alignment.datatype == "dna":
 				command.append("-dnafreqs=%s"%",".join([str(freq) for freq in alignment.dna_freqs]))
 
@@ -459,8 +456,8 @@ class Prank(Aligner):
 		stdout_file_name = "%s/stdout.txt"%wdir
 		res = os.system(commands)
 
-		err_msg = "".join(filter(lambda x: -1 != x.find("Unknown") or -1 !=x.find("Warning"), open(stdout_file_name, 'r').readlines()))
-                if -1 == err_msg.find("Warning") and res:
+		err_msg = "".join(filter(lambda x: "Unknown" in x or "Warning" in x, open(stdout_file_name, 'r')))
+		if not "Warning" in err_msg and res:
                         raise RuntimeError("Error happened during prank translate. ErrMsg:%s"%err_msg)
                 else:   
                         os.remove(stdout_file_name)
@@ -468,7 +465,7 @@ class Prank(Aligner):
                 if err_msg:
                         _LOG.info("During translating. Msg:%s, Input File:%s"%(err_msg, input_path))
 
-		return os.path.join(wdir, filter(lambda x: -1 != x.find(file_prefix), os.listdir(wdir))[0])
+		return os.path.join(wdir, filter(lambda x: file_prefix in x, os.listdir(wdir))[0])
 			
 		
 class Mafft(Aligner):
@@ -667,11 +664,11 @@ class PrankMerger(Merger):
 		if self.user_config is not None:
 			command.extend(self.user_config)
 
-		if self.user_config is None or len(filter(lambda x: -1 != x.find("-seed"), self.user_config)) < 1:
+		if self.user_config is None or not "-seed" in "".join(self.user_config):
                         if DEBUG:
                                 command.append("-seed=1111111")
 
-		if self.user_config is None or len(filter(lambda x: -1 != x.find("-dnafreqs"), self.user_config)) < 1:
+		if self.user_config is None or not "-dnafreqs" in "".join(self.user_config):
 			if alignment1.datatype == "dna":
 				command.append("-dnafreqs=%s"%",".join([str(freq) for freq in alignment1.dna_freqs]))
 
@@ -728,7 +725,6 @@ class PrankTree(TreeEstimator):
                         return None, file(result_file).read()
 
                 postp = lambda: read_result(result_file+".dnd")
-                #print " ".join(command)
                 return Job(command,
                            post_processor=postp,
                            cwd=wdir,

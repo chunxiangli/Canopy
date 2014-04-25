@@ -181,7 +181,6 @@ class CoEstimator(JobBase):
 			self._best_tree = self._new_tree
 			self._best_iter = self._cur_iter
 		
-		#print "get new tree done"
                 return new_score
 
 
@@ -276,10 +275,10 @@ class CoEstimator(JobBase):
 									file_prefix=file_prefix)
 			else:
 				source_file_prefix = "result.aligned.best"
-				if "".join(job._command).find("-ot=") != -1:
+				if "-ot=" in "".join(job._command):
 					source_file_prefix = "result.aligned"
 
-				if -1 != job.name.find("prankmerger"):
+				if "prankmerger" in job.name:
 					source_file_prefix = "merged"
 
 				copy_files(wdir, source_file_prefix, file_prefix, result_dir)
@@ -288,7 +287,7 @@ class CoEstimator(JobBase):
 			if not self._subiter:	
 				_LOG.debug("start to store prank score")
 				log_file = os.path.join(wdir, "stdout.txt")
-				results = filter(lambda x: -1 != x.find("Alignment score:"), open(log_file).readlines())
+				results = filter(lambda x: "Alignment score" in x, open(log_file))
 				self._prank_score = results[-1].split(':')[1].strip()
 				_LOG.debug("prank score:%s"%self._prank_score)
 
@@ -521,9 +520,7 @@ class AlignMergeTree(object):
                 result2 = self._lChild.get_result()
 
 		if result1 is None or result2 is None:
-               		#_LOG.info("Children results are not ready.%s"%self._work_dir)
 			return False
-               	#_LOG.info("Children results are ready.%s"%self._work_dir)
                 a1 = None
                 a2 = None
                 t1 = None

@@ -17,7 +17,7 @@ def remove_files_from_dir(work_dir, keyword):
 	assert os.path.isdir(work_dir), "The %s isn't directory."%work_dir
 	assert os.path.exists(work_dir), "The directory %s doesn't exist."%work_dir
 
-	delete_files = [ os.path.join(work_dir, f) for f in os.listdir(work_dir) if -1 != f.find(keyword)]
+	delete_files = [ os.path.join(work_dir, f) for f in os.listdir(work_dir) if keyword in f ]
 	if not delete_files:
 		raise IOError("No file contains %s"%keyword)
 	else:
@@ -35,7 +35,7 @@ def copy_files(work_dir, keyword, new_keyword, target_dir=None):
 
 	if target_dir is None:
 		target_dir = work_dir
-        source_files = filter(lambda x: -1 != x.find(keyword), os.listdir(work_dir))
+        source_files = filter(lambda x: keyword in x, os.listdir(work_dir))
 
         assert len(keyword), "No file name contains  %s."%keyword
 	assert os.path.exists(work_dir), "The directory %s doesn't exist."%work_dir

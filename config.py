@@ -82,7 +82,7 @@ class Option(object):
 
                 try:
 			name = self._short_str
-			if name.find(".") > 0:
+			if "." in name:
 				name = name.split(".")[1]
                         value = func_name(self._group, name)
 			if 'choice' == self._type:

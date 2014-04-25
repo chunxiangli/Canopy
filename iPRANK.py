@@ -596,7 +596,7 @@ def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
                                             delete_temps=False)
 
         log_file = os.path.join(prank_temp, "_temp_prank", "stdout.txt")
-        results = filter(lambda x: -1 != x.find("Alignment score:"), open(log_file).readlines())
+        results = filter(lambda x: "Alignment score:" in x, open(log_file))
         last_score = results[-1].split(':')[1].strip()
 
 	prank_score, prank_tree = Config.tree_estimator.run(prank_alignment, 

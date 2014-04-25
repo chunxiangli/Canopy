@@ -77,7 +77,7 @@ def name_filter_and_encode(name, name_array, name_map):
 	while len(existed_arr):
 		suffix += 1
 		if suffix >= 10:
-			reverse_index = 2
+			reverse_index = len(str(suffix))
 		nn = "%s%d"%(new_name[:-reverse_index], suffix)
 		existed_arr = [ n for n in name_map.keys() if n == nn ]
 
@@ -388,7 +388,6 @@ class MultiAlignments(dict, object):
 
 		try:
 			for alignment_name in sorted(self.names):
-				print alignment_name
 				old_names = concatenated_alignment.names
 				alignment = self[alignment_name]
 				if len(concatenated_alignment) < 1:
