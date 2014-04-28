@@ -65,7 +65,7 @@ def initial_configuration():
 		if num_cpus > 1:
 			real_num_cpus = get_number_of_cpus()
 			if num_cpus > real_num_cpus - 1:
-				user_config["main"]["num_cpus"] = real_num_cpus - 1
+				user_config["main"]["num_cpus"] = real_num_cpus
 				MESSENGER.send_warning("Only %d cpus are detected."%real_num_cpus)
 
 	#save the configuration
