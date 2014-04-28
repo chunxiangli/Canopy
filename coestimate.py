@@ -55,9 +55,6 @@ class CoEstimator(JobBase):
 		else:
 			return True
 
-	def need_split(self):
-		return self._kwargs.get("max_prob_size", self._num_taxa) < self._num_taxa
-
 	def start(self):	
 		if self._kwargs.get("need_sub_iter") is None:
 			self._subiter = True

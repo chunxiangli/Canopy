@@ -443,7 +443,7 @@ def main():
 						  delete_temps=delete_temps,
 						  translator=getattr(Config, "translator", None),
 						  num_cpus=num_cpus,
-						  max_prob_size=Config.main.get("max_prob_size"),
+						  max_prob_size=Config.main.get("max_prob_size", input.get_num_taxa()),
 						  need_sub_iter=Config.main.get("need_sub_iter", False),
 						  save_option=save_option, 
 						  without_guide=Config.main.get("without_guide",False),
