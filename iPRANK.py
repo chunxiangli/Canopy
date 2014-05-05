@@ -177,7 +177,7 @@ def store_result(alignment, prefix, tree_str=None, score=None, name_map=None):
                         phy_tree.rename_leaf_names(name_map)
                         write_tree_to_file(phy_tree, st_file, schema=tree_schema)
                 else:
-                        write_tree_to_file(tree_str, st_file, schema=tree_schema)
+                        write_tree_to_file(t_str, st_file, schema=tree_schema)
 
         if tree_str is not None:
                 tree_schema = Config.main.get("tree_format", "newick")
@@ -377,8 +377,8 @@ def main():
 				_RunningJob = None
 				MESSENGER.send_info("Initial alignment done.")
 
+				MESSENGER.send_info("Initial tree estimation start...")
 				for name in initial_input_seqs:
-					MESSENGER.send_info("Initial tree estimation start...")
 					tree_estimate_job = Config.tree_estimator.create_job(initial_input_seqs[name],
 									id=name,
 									tmp_dir=initial_temp,
@@ -389,7 +389,7 @@ def main():
 					jobQueue.put(tree_estimate_job)
 					initial_score[name], initial_tree[name] = tree_estimate_job.get_result()
 					_RunningJob = None	
-					MESSENGER.send_info("Initial tree estimation done.")
+				MESSENGER.send_info("Initial tree estimation done.")
 													
 					
 			else:
