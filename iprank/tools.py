@@ -1,13 +1,20 @@
+from iprank import msg_exit
+Bio_minimum_version = "1.58"
+try:
+        import Bio
+        if Bio.__version__ < Bio_minimum_version:
+                msg_exit("Sorry, reguires Biopython version %s or greater"%Bio_minimum_version)
+        del Bio
+except ImportError:
+        msg_exit("Error, Biopython is not installed (Biopython >=%s)"%Bio_minimum_version)
+
 import os, re, commands
-import time, os
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from Bio.Alphabet import generic_dna, generic_protein
-from dendropy import DataSet
-from logger import get_logger
-from tree import PhylogeneticTree
-from file_manage import remove_files
+from iprank.logger import get_logger
+from iprank.tree import PhylogeneticTree
+from iprank.file_manage import remove_files
 
 _LOG = get_logger(__name__)
 
@@ -225,7 +232,6 @@ class Alignment(dict, object):
 	def write_to_stream(self, stream, schema="fasta", name_suffix="", suppress_ancester=False, name_map=None):
 		records = []
 		restore = False
-		alphabet_dict = {"dna":generic_dna, "protein":generic_protein}
 
 		if schema !="phylip" and isinstance(name_map, dict):
 			restore = True
@@ -237,9 +243,9 @@ class Alignment(dict, object):
 				return name
 
                 if suppress_ancester:
-                        records=[SeqRecord(Seq(self[name], alphabet_dict[self._datatype]), id=get_name(name)+name_suffix, description="") for name in self.names if not name.startswith("#")]
+                        records=[SeqRecord(Seq(self[name]), id=get_name(name)+name_suffix, description="") for name in self.names if not name.startswith("#")]
                 else:
-                        records=[SeqRecord(Seq(self[name], alphabet_dict[self._datatype]), id=get_name(name)+name_suffix, description="") for name in self.names]
+                        records=[SeqRecord(Seq(self[name]), id=get_name(name)+name_suffix, description="") for name in self.names]
 
 		SeqIO.write(records, stream, schema)
 
@@ -431,3 +437,7 @@ class MultiAlignments(dict, object):
 	@num_taxa.setter
 	def num_taxa(self, num):
 		self._num_taxa = num
+
+if __name__ == "__main__":
+	align = Alignment()
+	align.read_from_path("/home/czli/Documents/thesis/iprank/tree1_TRUE_1.phy", "phylip")

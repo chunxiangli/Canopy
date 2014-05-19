@@ -1,0 +1,83 @@
+#!/bin/bash -l
+ORIGIN_AUTHOR='Alan Medlar'
+ERRORFILE='error.log'
+ENV="env"
+
+run(){
+	printf "\033[94m$*\n\033[0m"
+	$@ > /dev/null 2> $ERRORFILE
+
+	if [[ $? != 0 ]] ; then
+		printf "\033[91m\tFAILED (stderr was redirected to $ERRORFILE)\n\033[0m"
+		exit 1
+	fi
+
+	rm -f $ERRORFILE
+}
+
+out(){
+	printf "\033[92m$*\n\033[0m"
+}
+
+updatePath(){
+	echo 'export PATH=$PATH:$HOME/.local/bin' >> ~/.bashrc
+	source ~/.bashrc
+}
+
+if [[ -d $ENV ]] ; then
+	out Directory ./$ENV exits, delete directory and return this script
+	exit 1
+fi
+
+#check if pip is installed
+if [[ ! `which pip 2> /dev/null` ]]; then
+	out Could not find pip, installing...
+
+	if [[ ! `which easy_install 2> /dev/null` ]]; then
+		out Could not find easy_install, installing...
+		run wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py
+		run python ez_setup.py --user
+		run rm ez_setup.py	
+
+		updatePath
+
+		run easy_install --user pip
+	else	
+		run easy_install --user pip
+
+		updatePath
+	fi
+fi
+
+#check if virtualenv is installed
+if [[ ! `which virtualenv 2> /dev/null` ]] ; then
+	out Could not find virtualenv, installing...
+	run pip install --user virtualenv
+fi
+
+#create new enviroment
+out Creating virtual environment
+#run virtualenv --system-site-packages $ENV
+run virtualenv $ENV
+
+#activate
+out Activating...
+run source $ENV/bin/activate
+
+#install requested pakages
+out Installing python packages...
+#run pip install numpy
+run pip install numpy
+run pip install "biopython>=1.58"
+run pip install "dendropy>=3.10.0"
+
+
+printf "\033[96m\nA virtual python environment has been set up in ./env.\n"
+printf "\033[96mThe way you use this is to type the following command (or include in a job script)\n"
+printf "\033[96meverytime you run your program:\n"
+printf "\033[95m\t\$ source ./$ENV/bin/activate\n\n"
+printf "\033[96mIf you need to add any other packages, use pip after you have activated the environment:\n"
+printf "\033[95m\t\$ pip install package_name\n\n"
+printf "\033[96mIf you want to restore your enviroment, just type:\n"
+printf "\033[95m\t\$ deactivate\n\n"
+printf "\033[0m"

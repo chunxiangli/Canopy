@@ -1,6 +1,6 @@
-import sys, os, shutil, tempfile, tarfile
-from logger import get_logger
+import sys, os, shutil, tarfile
 from threading import Lock
+from iprank.logger import get_logger
 
 _LOG = get_logger(__name__)
 
@@ -37,8 +37,7 @@ def copy_files(work_dir, keyword, new_keyword, target_dir=None):
 		target_dir = work_dir
         source_files = filter(lambda x: keyword in x, os.listdir(work_dir))
 
-        assert len(keyword), "No file name contains  %s."%keyword
-	assert os.path.exists(work_dir), "The directory %s doesn't exist."%work_dir
+        assert len(source_files), "No file name contains  %s."%keyword
 
         for f in source_files:
         	prefix, suffix = f.split(keyword)

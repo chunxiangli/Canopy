@@ -1,10 +1,10 @@
-import os, sys, random, traceback, time
+import os, sys, time
 from StringIO import StringIO
 from Queue import Queue
 from threading import Thread, Event, Lock
 from subprocess import Popen, PIPE
-from logger import get_logger
-from file_manage import open_file
+from iprank.logger import get_logger
+from iprank.file_manage import open_file
 
 _LOG = get_logger(__name__)
 
@@ -41,9 +41,6 @@ class JobBase(object):
 	def wait(self):
 		pass
 	
-	def kill(self):
-		pass
-
 	def check_status(self):
 		pass
 
@@ -146,6 +143,7 @@ class Job(JobBase):
 					self._process.stdin.close()
                         		self._stdout_stream.close()
                         		self._stderr_stream.close()
+					self._process = None
 
 
                     		try:
@@ -162,8 +160,6 @@ class Job(JobBase):
 				self.check_status()
             		finally:
                 		self._finished_event.set()
-
-            	return self._return_code
 
 	def read_stderr(self):
 		if os.path.exists(self._stderr_stream.name):
@@ -182,14 +178,8 @@ class Job(JobBase):
 		self.check_status()
         	if self._result is None:
             		self.wait()
-
+		
         	return self._result
-
-    	def kill(self):
-        	#if self._result is None:
-		if self._process is not None:
-            		self._process.kill()
-                                  
 
 class Worker(Thread):
 	id = 0
@@ -200,31 +190,23 @@ class Worker(Thread):
 		self.id = Worker.id
 
 	def run(self):
-		while True:
+		while not self._exitFlag:
 			if not jobQueue.empty():
+				result = None
 				job = jobQueue.get()
 				try:
 					_LOG.info("Worker %d: Job start: %s."%(self.id, job.name))
 					job.start()
 				except Exception as e:
-					#TODO:whether need to rerun job
-					if job.run_time < 1:
-						_LOG.info("reput job into queue")
-						jobQueue.put(job)
-					else:
-						self.log_error(str(e))
-						raise e
+					self.exception_handler(job, e)
 				else:
 					try:
-						job.get_result()
+						result = job.get_result()
 					except Exception as e:
-						if job.run_time < 1:
-							jobQueue.put(job)
-						else:
-							self.log_error(str(e))
-							raise e
+						self.exception_handler(job, e)
 					else:
-						_LOG.info("Worker %d: Job finished: %s."%(self.id, job.name))
+						if result is not None:	
+							_LOG.info("Worker %d: Job finished: %s."%(self.id, job.name))
 						jobQueue.task_done()
 	def exit(self):
 		self._exitFlag = True
@@ -232,6 +214,16 @@ class Worker(Thread):
 	def log_error(self, msg):
 		msg = "Worker %d: %s."%(self.id, msg)
                 _LOG.error(msg)
+
+	def exception_handler(self, job, e):
+		#TODO:whether need to rerun job
+		if job.run_time < 1:
+			_LOG.info("reput job into queue")
+			jobQueue.put(job)
+		else:   
+			self.log_error(str(e))
+			raise e
+
 
 class MainWorker(object):
 	def __init__(self, max_num=1):
@@ -262,12 +254,12 @@ class MainWorker(object):
 		for i in range(cur_num, new_num):
 			w = Worker()
 			self._worker_list.append(w)
-			'''
-			Program will terminated when no active non-deamon thred. Don't call sys.exit 
-			when you still need operate on modules and global variables in the global namespace.
-			'''
-			w.setDaemon(True)
 			w.start()
 		self._workers_lock.release()
+
+	def stop_workers(self):
+		for w in self._worker_list:
+			w.exit()
+
 
 mainWorker = MainWorker()

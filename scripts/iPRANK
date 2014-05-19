@@ -1,0 +1,69 @@
+#!/bin/bash -l
+params=$@
+python_path=""
+run_color="92"
+error_color="91"
+
+run_iprank(){
+	${python_path}python -m 'iprank.iPRANK' $params
+}
+
+choose_option(){
+	text="setup"
+	printf "\033[${error_color}m$*\n\033[0m"
+	if [ -z ${python_path} ] && [ -f env/bin/python ]; then
+		text="resetup"
+		out_suffix=" in python virtual environment"
+		python_path=./env/bin/
+		check_library
+	else
+		printf "\033[33mPlease choose:\n"
+		printf "  1. exit (Install the requirement libraries manually and then run the script again.)\n"
+		printf "  2. ${text} python virtual environment.\n"
+		printf "Your choice: [1/2]:\033[0m"
+		read choose
+		if [[ '2' == $choose ]]; then
+			rm -r env/ >/dev/null 2>&1
+			./setup_virtualenv
+			if [[ $? != 0 ]]; then
+				exit $?
+			fi
+			python_path=./env/bin/
+		else
+			exit 1
+		fi
+	fi
+
+	out Launching Python from env/bin/
+	run_iprank
+	exit $?
+}
+
+out(){  
+        printf "\033[${run_color}m$*\n\033[0m"
+}
+
+check_library(){
+	${python_path}python -c "import Bio" > /dev/null 2>&1
+	if [[ $? != 0 ]]; then
+		choose_option Biopython is not installed
+	else
+		Biopython_version=`${python_path}python -c "import Bio;print Bio.__version__"`
+		if [[ $Biopython_version < "1.58" ]]; then
+			choose_option Biopython version should be 1.58 or greater
+		fi
+	fi
+
+	${python_path}python -c "import dendropy" > /dev/null	 2>&1
+	if [[ $? != 0 ]]; then
+		choose_option Dendropy is not installed
+	else
+		dendropy_version=`${python_path}python -c "import dendropy;print dendropy.__version__"`
+		if [[ $dendropy_version < "3.10.0" ]]; then
+			choose_option Dendropy version should be 3.10.0 or greater
+		fi
+	fi
+}
+
+check_library
+run_iprank

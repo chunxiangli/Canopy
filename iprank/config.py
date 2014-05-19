@@ -1,10 +1,5 @@
 import os, platform
 
-PROGRAM_NAME = "iprank"
-PROGRAM_VERSION = "1.0.0"
-PROGRAM_ABSTRACT = "Iterative alignment with PRANK"
-PROGRAM_INSTITUTE = "Institute of Biotechnology,Finland"
-
 DEBUG = False
 # global debugging flag
 if "DEBUG" in os.environ:
@@ -22,7 +17,7 @@ def get_number_of_cpus():
 	try:
 		import multiprocessing
 		return multiprocessing.cpu_count()
-	except (ImportError,NotImplementedError):
+	except (ImportError, NotImplementedError):
 		pass
 
 	#windows
@@ -42,9 +37,9 @@ def get_number_of_cpus():
 
 def deploy_tools():
 	if platform.system() == "Darwin":
-		return os.path.realpath("mac_bin/")
+		return os.path.realpath("iprank/mac_bin/")
 	elif platform.system() == "Linux":
-        	return os.path.realpath("bin/")
+        	return os.path.realpath("iprank/bin/")
 
 class Config(object):
 	sub_num = 0
@@ -174,13 +169,13 @@ class ConfigAndOptionParser(dict, object):
                 self._sections['clustalw'] = g
 
                 g = []
-                g.append(Option('raxml.model', '--model', group='raxml', help='Substitution model'))
+                g.append(Option('raxml.model', '--model', group='raxml', help='Substitution model. The default model for DNA sequences is GTRGAMMA and PROTGAMMAWAG for amino acid sequences.'))
                 g.append(Option('raxml.path', '--raxml.path', group='raxml', help='Raxml exectutable path'))
                 g.append(Option('raxml.args', '--raxml.args', group='raxml', help='Extra arguments'))
                 self._sections['raxml'] = g
 
 		g = []
-                g.append(Option('phyml.model', '--phyml.model', group='phyml', help='Substitution model'))
+                g.append(Option('phyml.model', '--phyml.model', group='phyml', help='Substitution model. The default model for DNA sequences is HKY85 and WAG for amino acid sequences.'))
                 g.append(Option('phyml.path', '--phyml.path', group='phyml', help='phyml exectutable path'))
                 g.append(Option('phyml.args', '--phyml.args', group='phyml', help='Extra arguments'))
                 self._sections['phyml'] = g
