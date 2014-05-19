@@ -188,7 +188,15 @@ def store_result(alignment, prefix, tree_str=None, score=None, name_map=None):
 	return file_path
 
 def create_tools(tmpFileM, need_translator):	
-	def initial_tool(tool_class, args=" "): 
+	def initial_tool(tool_name, tool_type, args=" "): 
+		class_tool_list = [ALIGNER_CLASS, MERGER_CLASS, TREE_ESTIMATOR_CLASS, TRANSLATOR_CLASS] 
+		tool_class = None
+		try:
+			tool_class = [tool for tool in class_tool_list[tool_type] if tool_name == tool.name][0]
+		except IndexError, e:
+			MESSENGER.send_error("%s is not recognized. Please choose tool from: %s."%(tool_name, " ".join([tool.name for tool in class_tool_list[tool_type]])))
+			raise e
+
 		tool_args = args
 		option_name = "%s.args"%(tool_class.name)
 
@@ -200,7 +208,7 @@ def create_tools(tmpFileM, need_translator):
 		return tool_class(tmpFileM, cmd=Config.user_config[tool_class.name]["%s.path"%(tool_class.name)], args=tool_args) 
 	
 	initial_aligner_name = Config.main.get("initial_aligner", "mafft")
-	Config.initial_aligner = initial_tool([tool for tool in ALIGNER_CLASS if initial_aligner_name == tool.name][0])
+	Config.initial_aligner = initial_tool(initial_aligner_name, 0)
 
 	MESSENGER.send_info("Initial aligner:%s created successfully."%initial_aligner_name)
 
@@ -209,18 +217,15 @@ def create_tools(tmpFileM, need_translator):
 		Config.aligner = Config.initial_aligner
 	
 	else:
-		Config.aligner = initial_tool([tool for tool in ALIGNER_CLASS if aligner_name == tool.name][0]) 
+		Config.aligner = initial_tool(aligner_name, 0) 
 	MESSENGER.send_info("Internal aligner:%s created successfully."%aligner_name)
 
 	merger_name = Config.main.get("merger","prank")
-	Config.merger = initial_tool([tool for tool in MERGER_CLASS if merger_name == tool.name][0])
+	Config.merger = initial_tool(merger_name, 1)
 	MESSENGER.send_info("Merge tool:%s created successfully."%merger_name)
 
 	tree_estimator_name = Config.main.get("tree_estimator", "raxml")
-	if Config.main.get("datatype", "DNA") != "DNA" and tree_estimator_name == "dnaml":
-		MESSENGER.send_error("DNAML is noly for DNA. Please check your configuration for the tree estimator.")
-		raise ValueError("DNAML is only for DNA sequence.")
-	Config.tree_estimator = initial_tool([tool for tool in TREE_ESTIMATOR_CLASS if tree_estimator_name == tool.name][0]) 
+	Config.tree_estimator = initial_tool(tree_estimator_name, 2) 
 	MESSENGER.send_info("Tree estimate tool:%s created successfully."%tree_estimator_name)
 
 	if need_translator:
@@ -230,7 +235,7 @@ def create_tools(tmpFileM, need_translator):
 		elif translator_name == aligner_name:
 			Config.translator = Config.aligner
 		else:
-			Config.translator = initial_tool([tool for tool in TRANSLATOR_CLASS if translator_name == tool.name][0], args=extra_args)
+			Config.translator = initial_tool(translator_name, 3)
 
 def read_input_files():
 	input_seqs = None

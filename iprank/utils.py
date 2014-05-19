@@ -130,24 +130,6 @@ def read_phyml_results(workdir, del_dirs, file_manager):
 
         return score, tree_str
 
-def read_dnaml_results(workdir, del_dirs, file_manager):
-	log_score = None
-	tree_str = ""
-
-	with open(os.path.join(workdir, "outfile")) as log_file:
-		log_score = filter(lambda x: "Ln Likelihood" in x, log_file)
-
-	score = None
-	if log_score:
-		score = float(log_score[0].split("=")[-1])
-
-	with open(os.path.join(workdir, "outtree")) as tree_file:
-		tree_str = tree_file.read().strip()
-	
-	file_manager.remove_dirs(del_dirs)
-
-	return score, tree_str
-
 def generate_prank_output(target_dir, source_dir, name_map, datatype, output_options=[], output_format="fasta", file_prefix=None):
 	_LOG.debug("start to generate prank output:%s"%output_options)
        	file_list = os.listdir(source_dir)
@@ -373,7 +355,7 @@ class Pagan(Aligner):
 		unaligned_seqs = alignment.unaligned()
 		job_id = kwargs.get("id", "")
 
-		is_fake, job = self.check_and_create_fake_job(unaligned_seqs, job_id, **kwargs)
+		is_fake, job = self.check_and_create_fake_job(unaligned_seqs, **kwargs)
 		if is_fake:
 			return job
 
@@ -955,35 +937,7 @@ class PhyML(TreeEstimator):
                            id=kwargs.get("id", ""),
                            description="%s_%s"%(kwargs.get("description", "Whole"), self.name))
 
-class Dnaml(TreeEstimator):#It only works for DNA		
-	name = "dnaml"
-	def __init__(self, file_manager, **kwargs):
-                TreeEstimator.__init__(self, file_manager, **kwargs)
-	
-	def _preprocess_input(self, alignment, **kwargs):
-		workdir_path = self.make_workdir(kwargs.get("tmp_dir"), kwargs.get("id", ""))
-                input_file = os.path.join(workdir_path, "input.phy")
-                alignment.write_to_path(input_file, "phylip")
-
-		return workdir_path, input_file
-
-	def create_job(self, alignment, **kwargs):
-		wdir, input_file = self._preprocess_input(alignment, **kwargs)
-		command = [self.cmd, input_file]
-
-		del_dirs = []
-		if kwargs.get("delete_temps", self.delete_temps):
-			del_dirs = [wdir]
-
-		postp = lambda: read_dnaml_results(wdir, del_dirs, self.file_manager)
-
-		return Job(command,
-                           post_processor=postp,
-                           cwd=wdir,
-                           id=kwargs.get("id", ""),
-                           description="%s_%s"%(kwargs.get("description", "whole"), self.name))
-
 ALIGNER_CLASS = [Prank, Mafft, ClustalW, Pagan]
 MERGER_CLASS = [MuscleMerger, PrankMerger]
-TREE_ESTIMATOR_CLASS = [FastTree, Raxml, PhyML, Dnaml, PrankTree]
+TREE_ESTIMATOR_CLASS = [FastTree, Raxml, PhyML, PrankTree]
 TRANSLATOR_CLASS= [Prank]

@@ -148,7 +148,7 @@ class ConfigAndOptionParser(dict, object):
                 g.append(Option('initial_aligner', '--initial_aligner', group='main', help='The name of initial aligner tool. Currently support: mafft, prank, clustalw. Dfault:mafft'))
                 g.append(Option('aligner', '--aligner', group='main', help='The name of aligner tool for iteration steps. Currently support: mafft, prank, clustalw. Dfault:mafft'))
                 g.append(Option('merger', '--merger', group='main', help='The name of merege tool for iteration steps. Currently support: muscle, prank. Dfault:prank'))
-                g.append(Option('tree_estimator', '--tree_estimator', group='main', help='The name of tree estimate tool. Currently support: raxml, fasttree, phyml, dnaml. Dfault:raxml'))
+                g.append(Option('tree_estimator', '--tree_estimator', group='main', help='The name of tree estimate tool. Currently support: raxml, fasttree, phyml. Dfault:raxml'))
 		g.append(Option('config_export_path', '--config_export_path', group='main', help="the file for saving user's configure"))
 		g.append(Option('without_guide', '--without_guide', group='main', help="Don't provide guide tree to align procedure.", action='store_true'))
 		g.append(Option('decomposite_strategy', '--decomposite_strategy', type='choice', choices=['longest', 'seed'], group='main', help='The strategy for the decomposition of root tree. longest: remove the longest branch to split a tree into two parts; seed: split a tree by removing the seed node.'))
@@ -180,11 +180,6 @@ class ConfigAndOptionParser(dict, object):
                 g.append(Option('phyml.args', '--phyml.args', group='phyml', help='Extra arguments'))
                 self._sections['phyml'] = g
 		
-		g = []
-                g.append(Option('dnaml.path', '--dnaml.path', group='dnaml', help='dnaml exectutable path'))
-		self._sections['dnaml'] = g
-		
-
                 g = []
                 g.append(Option('prank.path', '--prank.path', group='prank', help='Prank exectutable path'))
                 g.append(Option('prank.args', '--prank.args', group='prank', help='Extra arguments'))
