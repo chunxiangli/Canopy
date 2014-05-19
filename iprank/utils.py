@@ -1,10 +1,10 @@
 import sys, os, time, random, platform, shlex, re
 from cStringIO import StringIO
-from tree import PhylogeneticTree, write_tree_to_file
-from logger import get_logger
-from config import DEBUG
-from job import Job, FakeJob, mainWorker, jobQueue
-from tools import Alignment
+from iprank.tree import PhylogeneticTree, write_tree_to_file
+from iprank.logger import get_logger
+from iprank.config import DEBUG
+from iprank.job import Job, FakeJob, mainWorker, jobQueue
+from iprank.tools import Alignment, MultiAlignments
 
 _LOG = get_logger(__name__)
 
@@ -168,7 +168,7 @@ def generate_prank_output(target_dir, source_dir, name_map, datatype, output_opt
                 elif "anc.fas" in f:
                         prefix = f.split("anc.fas")[0]
                         break
-                elif align_file_suffix in f:
+                elif f.endswith(align_file_suffix):
                         prefix = f.split("fas")[0]
 
         if file_prefix is None:
@@ -243,6 +243,7 @@ def generate_prank_output(target_dir, source_dir, name_map, datatype, output_opt
                 #xml
                 origin_xml_path = os.path.join(source_dir, prefix+middle+"xml")
                 result_xml_path = os.path.join(target_dir, file_prefix + ".xml")
+		_LOG.debug("result_xml_path:%s"%result_xml_path)
                 file_type = "xml"
                 with open(result_xml_path, 'w') as rxp:
                         rxp.writelines(map(replace_from_dict, file(origin_xml_path)))
@@ -250,6 +251,24 @@ def generate_prank_output(target_dir, source_dir, name_map, datatype, output_opt
 	_LOG.debug("finish generate prank output")
 
 	return result_align_path
+
+def write_xml(directory, file_prefix, alignment, tree_str, name_map):
+	if isinstance(alignment, MultiAlignments):
+		alignment = alignment.concatenate()
+
+	with open("%s/%s.xml"%(directory, file_prefix), 'w') as xmlFile:
+		tree = PhylogeneticTree.read_from_string(tree_str, 'newick')
+		xmlFile.write("<ms_alignment>\n<newick>\n")
+		xmlFile.write(tree.as_newick_string())
+		xmlFile.write("\n</newick>")
+		xmlFile.write("<nodes>\n")
+		for name in tree.leaf_node_names():
+			if name_map is not None:
+				xmlFile.write('<leaf id="%s" name="%s">\n'%(name, name_map[name]))	
+			else:
+				xmlFile.write('<leaf id="%s">'%name)	
+			xmlFile.write(' <sequence>\n %s\n </sequence>\n</leaf>\n'%alignment[name])
+		xmlFile.write("</nodes>\n</ms_alignment>\n")
 
 class Tool(object):
 	is_bundled = False
@@ -812,10 +831,10 @@ class Raxml(TreeEstimator):
 		model = kwargs.get("model", None)
 		if "dna" == alignment.datatype:
 			if model is None or "" == model:
-				model = "GTRCAT"
+				model = "GTRGAMMA"
 		elif "protein" == alignment.datatype:
 			if model is None or "" == model:
-				model = "PROTCATWAGF"
+				model = "PROTGAMMAWAG"
 		else:
 			raise ValueError("Datatype '%s' not suppported by RAxML"%str(alignment.datatype))	
 
@@ -896,7 +915,7 @@ class PhyML(TreeEstimator):
                                 raise ValueError("The %s model is not available for PhyML."%model)
                 elif "protein" == alignment.datatype:
 			if model is None or"" ==  model:
-                        	model = "LG"
+                        	model = "WAG"
                         data_type = "aa"
                         if model not in ["LG", "WAG", "JTT", "MtREV", "Dayhoff", "DCMut", "RtREV", "CpREV", "VT", "Blosum63", "MtMam", "MtArt", "HIVw", "HIVb", "custom"]:
                                 raise ValueError("The %s model is not available for PhyML."%model)

@@ -1,12 +1,17 @@
-import sys, os, time, random, signal, time, shutil
-from config import Config, ConfigAndOptionParser, get_number_of_cpus
-from logger import MESSENGER, get_logger
-from tools import Alignment, MultiAlignments, format_alignment_result_in_directory, alignment_accuracy
-from utils import ALIGNER_CLASS, MERGER_CLASS, TREE_ESTIMATOR_CLASS, TRANSLATOR_CLASS, translate_data, Prank, ClustalW
-from job import jobQueue, mainWorker
-from file_manage import TempFileManager, makeArchive, remove_files_from_dir, remove_files
-from coestimate import CoEstimator
-from tree import PhylogeneticTree, write_tree_to_file, robinson_foulds_distance, symmetric_difference
+import sys
+from iprank import msg_exit
+if sys.version_info < (2,7) :
+    msg_exit("Sorry: requires python version 2.7 or greater (but not python 3.x)")
+
+import os, time, random, time, shutil
+from iprank.config import Config, ConfigAndOptionParser, get_number_of_cpus
+from iprank.logger import MESSENGER, get_logger
+from iprank.tools import Alignment, MultiAlignments, format_alignment_result_in_directory, alignment_accuracy
+from iprank.utils import ALIGNER_CLASS, MERGER_CLASS, TREE_ESTIMATOR_CLASS, TRANSLATOR_CLASS, translate_data, write_xml
+from iprank.job import jobQueue, mainWorker
+from iprank.file_manage import TempFileManager, makeArchive, remove_files_from_dir, remove_files
+from iprank.coestimate import CoEstimator
+from iprank.tree import PhylogeneticTree, write_tree_to_file, robinson_foulds_distance, symmetric_difference
 
 _LOG = get_logger(__name__)
 
@@ -19,7 +24,7 @@ def initial_configuration():
 	user_config["main"]["seq"] = seq_path
 	if not os.path.exists(seq_path):
 		MESSENGER.send_error("Input sequences file doesn't exist or not a valid file.")
-		raise ValueError("Inputsequences file donesn't exist or not a valid file")
+		raise ValueError("Input sequences file donesn't exist or not a valid file")
 
 	input_dir = os.path.dirname(seq_path)
 	job_name = user_config["main"].get("name", "job")
@@ -57,23 +62,21 @@ def initial_configuration():
 
 	MESSENGER.out_log_streams.append(Config.log_stream)
 	MESSENGER.err_log_streams.append(Config.log_stream)
-
 	if not "num_cpus" in user_config["main"]:
 		user_config["main"]["num_cpus"] = 1 
 	else:
 		num_cpus = user_config["main"]["num_cpus"]
 		if num_cpus > 1:
 			real_num_cpus = get_number_of_cpus()
-			if num_cpus > real_num_cpus - 1:
+			if num_cpus > real_num_cpus:
 				user_config["main"]["num_cpus"] = real_num_cpus
 				MESSENGER.send_warning("Only %d cpus are detected."%real_num_cpus)
 
 	#save the configuration
 	user_config["main"]["work_directory"] = Config.work_directory
-	export_config_path = user_config["main"].get("config_export_path", None) 
-	if export_config_path:
-		export_config_path = user_config.write_to_file(export_config_path)
-		MESSENGER.send_info("Configurations are saved as %s"%export_config_path)
+	export_config_path = user_config["main"].get("config_export_path", "config.back") 
+	export_config_path = user_config.write_to_file(export_config_path)
+	MESSENGER.send_info("Configurations are saved as %s"%export_config_path)
 
 	Config.main = user_config["main"]
 	del user_config["main"]
@@ -110,7 +113,6 @@ def check_prank_option():
 			if Config.main.get("showxml", False):
 				Config.main["output_options"].append("-showxml")
 
-
 def post_file_process():
 	data_name = os.path.basename(Config.work_directory)
 	target_dir = os.path.realpath(os.path.expanduser(Config.main["archive_directory"]))
@@ -139,22 +141,6 @@ def post_file_process():
 	shutil.rmtree(Config.work_directory)
 	os.remove(archive_path)
 		
-
-def signal_handler(signum, frame):
-	global _RunningJob
-	if _RunningJob is not None:
-		MESSENGER.send_warning("Kill handler called when jobs are running. exit.")
-		if isinstance(_RunningJob, list):
-			for job in _RunningJob:
-				job.kill()	
-				MESSENGER.send_warning("Job killed: %s."%job.name)
-		else:
-			_RunningJob.kill()
-			MESSENGER.send_warning("Job killed: %s."%_RunningJob.name)
-		_RunningJob = None
-	else:
-		MESSENGER.send_warning("Kill handler called when no jobs are running. Exit directly.")
-
 def store_result(alignment, prefix, tree_str=None, score=None, name_map=None):
 	file_path = None
 	suffix = ".tree"
@@ -172,12 +158,13 @@ def store_result(alignment, prefix, tree_str=None, score=None, name_map=None):
 
 	def write_tree(t_str, mid=""):
 		st_file = os.path.join(Config.work_directory, prefix+mid+suffix)
+		_LOG.debug(st_file)
                 if name_map:
                         phy_tree = PhylogeneticTree.read_from_string(t_str)
                         phy_tree.rename_leaf_names(name_map)
                         write_tree_to_file(phy_tree, st_file, schema=tree_schema)
                 else:
-                        write_tree_to_file(tree_str, st_file, schema=tree_schema)
+                        write_tree_to_file(t_str, st_file, schema=tree_schema)
 
         if tree_str is not None:
                 tree_schema = Config.main.get("tree_format", "newick")
@@ -187,6 +174,7 @@ def store_result(alignment, prefix, tree_str=None, score=None, name_map=None):
 			[write_tree(tree_str[name], '_'+name) for name in tree_str]
 		else:
 			write_tree(tree_str)
+
 	def write_score(sc, mid=""):
 		with open(os.path.join(Config.work_directory, "%s%s_score.txt"%(prefix, mid)),'w') as score_file:
                         score_file.write("%.10f"%sc)
@@ -267,14 +255,15 @@ def read_input_files():
 			input_seqs = Alignment()
 
 		name_map = input_seqs.read_from_path(seq_path, input_format, data_datatype)
-		if name_map.keys() == name_map.values():
-			name_map = None	
 
 		if input_seqs.is_empty():
 			err_msg +="Please make sure the files' format are correctly specified."
 			MESSENGER.send_error(err_msg)	
 			raise ValueError(err_msg)
 
+		if name_map.keys() == name_map.values():
+			name_map = None	
+		
 		if not is_multi_alignments:	
 			initial_phy_tree = None
 			if "tree" in Config.main:
@@ -308,11 +297,7 @@ def main():
 
 	tempFileManager = TempFileManager()
 	_top_level_temp = tempFileManager.create_top_level_temp(parent=Config.work_directory)
-
-	signal_and_handler = []
-	for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]:
-        	signal_and_handler.append((sig, signal.signal(sig, signal_handler)))
-
+	
 	save_option = Config.main.get("save_option", "simple")
 	delete_temps = True
         if "all" == save_option:
@@ -323,7 +308,7 @@ def main():
 		data_datatype = Config.main.get("datatype", "DNA")
 		align_datatype = Config.main.get("align_datatype", None)
 		need_translator = False
-		if align_datatype is not None and align_datatype != data_datatype:
+		if align_datatype is not None and "DNA" == data_datatype and align_datatype != data_datatype:
 			need_translator = True
 
 		create_tools(tempFileManager, need_translator)
@@ -377,8 +362,8 @@ def main():
 				_RunningJob = None
 				MESSENGER.send_info("Initial alignment done.")
 
+				MESSENGER.send_info("Initial tree estimation start...")
 				for name in initial_input_seqs:
-					MESSENGER.send_info("Initial tree estimation start...")
 					tree_estimate_job = Config.tree_estimator.create_job(initial_input_seqs[name],
 									id=name,
 									tmp_dir=initial_temp,
@@ -389,7 +374,7 @@ def main():
 					jobQueue.put(tree_estimate_job)
 					initial_score[name], initial_tree[name] = tree_estimate_job.get_result()
 					_RunningJob = None	
-					MESSENGER.send_info("Initial tree estimation done.")
+				MESSENGER.send_info("Initial tree estimation done.")
 													
 					
 			else:
@@ -412,6 +397,7 @@ def main():
 				_RunningJob = job
 				jobQueue.put(job)
 				initial_score, initial_tree = job.get_result()
+				_RunningJob = None
 				MESSENGER.send_info("Initial tree estimation done.")
 			
 			saved_initial_result_path = store_result(initial_input_seqs, "initial", initial_tree, initial_score, name_map)
@@ -429,6 +415,7 @@ def main():
 
 		start_co = time.time()
 		def coestimate_single(input, tree, score, name=""):		
+			global _RunningJob
 			co_temp = tempFileManager.create_subdir("divide_and_merge%s"%('_'+name))
 
 			coestimator = CoEstimator(Config.aligner,
@@ -461,6 +448,8 @@ def main():
 
 			return result_path, result_tree, result_score
 
+		writeXML = lambda: "-showxml" in Config.main.get("output_options", [])
+
 		saved_result_path = None
 		best_tree = None
 		best_score = None
@@ -482,28 +471,39 @@ def main():
 							model=tree_model)
 			_RunningJob = tree_estimate_job
 			jobQueue.put(tree_estimate_job)
-			species_score, species_tree = tree_estimate_job.get_result()
-			saved_concatenate_result = store_result(concatenate_result, "species", species_tree, species_score, name_map=name_map)
+			best_score, best_tree = tree_estimate_job.get_result()
+			saved_concatenate_result = store_result(concatenate_result, "species", best_tree, best_score, name_map=name_map)
+
+			if writeXML():
+				write_xml(Config.work_directory, "species", concatenate_result, best_tree, name_map=name_map)
+
 			concatenate_result = None
 			_RunningJob = None 
                         MESSENGER.send_info("Species tree inference done.")
 	
 		else:
 			saved_result_path, best_tree, best_score = coestimate_single(input_seqs, initial_tree, initial_score)
+			if writeXML():
+				input_seqs.read_from_path(saved_result_path)
+				write_xml(Config.work_directory, "result_final", input_seqs, best_tree, name_map=name_map)
 
                 #If the alignment target is PROTEIN while the input sequences are in DNA, we need back translate the final result into DNA.
 		translate_result_path = None
-                if need_translator and align_datatype == "PROTEIN":
+                if need_translator and "PROTEIN" == align_datatype:
 			_LOG.debug("need back translate")
+			translate_file_name = "result_translated"
 			if is_multi_alignments:
 				saved_result_path = saved_result_path.values()	
+				translate_file_name = "species_translated"
 
                         translate_result_path = translate_data(Config.translator, saved_result_path, Config.work_directory, dna_path=saved_input_path)
 
-			if is_multi_alignments:
-				input_seqs.read_from_path(translate_result_path,data_type="DNA", prefix="result_") 				
-				input_seqs.write_to_path(os.path.join(Config.work_directory, 'species_translated.fas'), name_map=name_map)
-				
+			input_seqs.read_from_path(translate_result_path, data_type="DNA", prefix="result_") 				
+			input_seqs.write_to_path(os.path.join(Config.work_directory, "%s.fas"%translate_file_name), name_map=name_map)
+
+			if writeXML():
+				write_xml(Config.work_directory, translate_file_name, input_seqs, best_tree, name_map=name_map)
+
 			_LOG.debug("finish back translate")
 
 		if "output_format" in Config.main:
@@ -539,19 +539,17 @@ def main():
 
 		if 'simple' == save_option:
 			remove_files_from_dir(Config.work_directory, "iteration")
-
+	except KeyboardInterrupt:
+		MESSENGER.send_error("KeyboardInterrupt.")
 	except Exception as e:
 		exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
 		MESSENGER.send_error("At main stage. Msg:%s. Type:%s, FileName:%s, Line:%d"%(str(e), exc_type, fname, exc_tb.tb_lineno))
 	finally:
-		#mainWorker.stop_workers()
-		for el in signal_and_handler:
-                	sig, handler = el
-                	if handler is None:
-                        	signal.signal(sig, signal.SIG_DFL)
-                	else:   
-                        	signal.signal(sig , handler)
+		MESSENGER.send_info("%.2gs"%(time.time()-start))
+
+		mainWorker.stop_workers()
+
 		total_time = time.time() - start
 		if "archive_directory" in Config.main:	
 			MESSENGER.send_info("post_file")
@@ -576,6 +574,7 @@ def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
 	prank_args = " "
         if "prank.args" in Config.user_config['prank']:
                 prank_args = Config.user_config['prank']['prank.args']
+	from utils import PRANK
         prank = Prank(tempFileManager, cmd=Config.user_config['prank']['prank.path'], args=prank_args)
 	tree_model = Config.user_config[Config.tree_estimator.name].get("%s.model"%Config.tree_estimator.name, "")
 
@@ -618,6 +617,8 @@ def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
 	clustalw_args = ""
         if 'clustalw.args' in Config.user_config['clustalw']:
                 clustalw_args = Config.user_config['clustalw']['clustalw.args']
+
+	from utils import ClustaW
         clustalw = ClustalW(tempFileManager, cmd=Config.user_config['clustalw']['clustalw.path'])
 
 	clustalw_start = time.time()

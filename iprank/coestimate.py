@@ -2,13 +2,13 @@ import os, time, sys, shutil
 from StringIO import StringIO
 from threading import Event
 from dendropy import Tree
-from job import jobQueue, JobBase
-from tree import PhylogeneticTree, write_tree_to_file, reroot_at_midpoint, robinson_foulds_distance, symmetric_difference
-from logger import get_logger, MESSENGER
-from config import Config
-from tools import MultiAlignments, Alignment, alignment_accuracy
-from file_manage import copy_files, remove_files
-from utils import translate_data,generate_prank_output
+from iprank.job import jobQueue, JobBase
+from iprank.tree import PhylogeneticTree, write_tree_to_file, reroot_at_midpoint, robinson_foulds_distance, symmetric_difference
+from iprank.logger import get_logger, MESSENGER
+from iprank.config import Config
+from iprank.tools import MultiAlignments, Alignment, alignment_accuracy
+from iprank.file_manage import copy_files, remove_files
+from iprank.utils import translate_data, generate_prank_output
 
 _LOG = get_logger(__name__)
 _DEFAULT_MAX_ITER = 5
@@ -34,11 +34,9 @@ class CoEstimator(JobBase):
 		self._old_tree = None
 		self._event_list = Event()
 		self._job = None
-		self._killed = False
 		self._iterational_result_files = []
 
 	def _keep_iterating(self):	
-		self.check_status()
 		if 0 == self._cur_iter:
 			self._start_time = time.time()
 		if self._num_taxa < 4 and self._cur_iter > 1:
@@ -76,7 +74,8 @@ class CoEstimator(JobBase):
 
 		k = dict(self._kwargs)
 		k["score"] = None
-		k["num_cpus"] = 2
+		if self._num_cpus > 1:
+			k["num_cpus"] = 2
 
 		try:
 			while self._keep_iterating():
@@ -116,9 +115,12 @@ class CoEstimator(JobBase):
 				self._store_optimal_result()
 
 		except Exception as e:
-			exc_type, exc_obj, exc_tb = sys.exc_info()
-			fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-			raise RuntimeError("Unexpected error:%s.Type:%s, FileName:%s,Line:%d"%(str(e), exc_type, fname, exc_tb.tb_lineno))
+			if isinstance(e, KeyboardInterrupt):
+				raise e
+			else:
+				exc_type, exc_obj, exc_tb = sys.exc_info()
+				fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+				raise RuntimeError("Unexpected error:%s.Type:%s, FileName:%s,Line:%d"%(str(e), exc_type, fname, exc_tb.tb_lineno))
 		finally:
 			self._event_list.set()
 
@@ -129,7 +131,6 @@ class CoEstimator(JobBase):
 		assert new_alignment_num_taxa == self._num_taxa, "The number of taxa of new alignment not equals the original number."
 		
 		_LOG.debug("Start tree estimation...")
-		self.check_status()
 		
 		if self._align_datatype == "CODON":
 			_LOG.debug("Codon alignment need translation for tree estimation...")
@@ -150,7 +151,6 @@ class CoEstimator(JobBase):
 								 id=self.id,
 								 description=self._kwargs.get("description", "whole"))
 		self._job = tree_estimator
-		self.check_status()
 		tree_estimator.start()
 		new_score, self._new_tree = tree_estimator.get_result()
 		new_concatenated_alignment = None
@@ -171,8 +171,6 @@ class CoEstimator(JobBase):
 				return True
 			return False
 
-		self.check_status()
-
 		if score_improved(new_score):
 			MESSENGER.send_info("Tree improved at iteration %d."%self._cur_iter)
 			self._best_tree = self._new_tree
@@ -188,8 +186,6 @@ class CoEstimator(JobBase):
 
 		MESSENGER.send_info("Create align job")
 		self._create_align_job_for_single_data(self._alignment, phy_tree, **kwargs)
-
-		self.check_status()
 
 		_LOG.debug("Start get align result...")
 
@@ -325,18 +321,11 @@ class CoEstimator(JobBase):
 		alignMergeTree = AlignMergeTree(phy_tree, alignment, work_dir, self._aligner, self._merger, self._tree_estimator, **kwargs)
 		_LOG.debug("End split.")
 
-		if self._killed:
-				[ job.kill() for job in _ALIGN_JOBS]
-				raise RuntimeError("Coestimator Killed during align.")
-
 		MESSENGER.send_info("The size of merge list:%d"%len(_MERGE_NODES))
 		_merge_jobs = []
 		_LOG.debug("Start merge...")
 		while _MERGE_NODES:
 			update = False
-			if self._killed:
-				[ job.kill() for job in _merge_jobs]
-				raise RuntimeError("Coestimator Killed during merging.")
 
 			for node in _MERGE_NODES:
 				job = node._create_merge_job()
@@ -403,14 +392,6 @@ class CoEstimator(JobBase):
 			MESSENGER.send_info("Best iter:%d"%self._best_iter)
 		return self._result
 
-	def kill(self):
-		self._killed = True
-		if self._job is not None:
-			self._job.kill()
-
-	def check_status(self):
-		if self._killed:
-			raise RuntimeError("Coestimator Killed.")
 _MERGE_NODES = []
 _ALIGN_JOBS = []
 class AlignMergeTree(object):

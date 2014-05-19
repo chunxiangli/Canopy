@@ -1,4 +1,14 @@
-import os, sys, copy, shutil, re
+from iprank import msg_exit
+dendropy_minimum_version = "3.10.0"
+try:
+        import dendropy
+        if dendropy.__version__ < dendropy_minimum_version:
+                msg_exit("Sorry, reguires Dendropy version %s or greater"%dendropy_minimum_version)
+        del dendropy
+except ImportError:
+        msg_exit("Error, dendropy is not installed (dendropy >=%s)"%dendropy_minimum_version)
+
+import os, copy, re
 from StringIO import StringIO
 from dendropy import TaxonSet, Tree, Node, treecalc, treesplit
 import config
@@ -8,14 +18,6 @@ def  write_tree_to_file(tree, file_name, schema="newick"):
 		if isinstance(tree, str):
 			tree = PhylogeneticTree.read_from_string(tree)
 		tree.write(file_obj, schema=schema, suppress_rooting=True)
-
-def copy_temp_tree(tree_file, product_manager, step_num):
-	if (product_manager is not None) and (step_num is not None):
-		result_file = product_manager.get_abspath_for_iter_output(step_num, TEMP_TREE_TAG)
-		if result_file and os.path.exists(tree_file):
-			_LOG.warn("Not allowed to overwrite file '%s'."%result_file)
-		else:
-			shutil.copy2(tree_file, result_file)
 
 def reroot_at_midpoint(tree_str,schema="newick"):
 	phy_tree = PhylogeneticTree.read_from_string(tree_str,schema)
