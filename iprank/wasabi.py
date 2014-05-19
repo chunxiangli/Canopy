@@ -33,8 +33,8 @@ def _upload_to_wasabi(filename, name, url, userid):
     return tmp['id']
 
 if __name__ == "__main__":
-	name = argv[1]
-	filename = argv[2]
-	userid = "zJiajd"
+	userid = argv[1]
+	name = argv[2]
+	filename = argv[3]
 	url = "http://wasabi2.biocenter.helsinki.fi:8000"
 	wasabi(filename, name, url, userid)
