@@ -21,7 +21,6 @@ class CoEstimator(JobBase):
 		self._tree = tree
 		self._aligner = aligner
 		self._merger = merger
-                self._align_datatype = kwargs.get("align_datatype", None)
 		self._tree_estimator = tree_estimator 
 		self._translator = kwargs.get("translator", None) 
 		self._file_manager = kwargs.get("file_manager")
@@ -84,7 +83,6 @@ class CoEstimator(JobBase):
 				k["old_tree"] = self._old_tree
 
 				MESSENGER.send_info("Iteration %d: align start..."%(self._cur_iter))
-
 				self.align(**k)
 
 				MESSENGER.send_info("Iteration %d: align done."%(self._cur_iter))
@@ -132,7 +130,7 @@ class CoEstimator(JobBase):
 		
 		_LOG.debug("Start tree estimation...")
 		
-		if self._align_datatype == "CODON":
+		if self._alignment.align_datatype == "CODON":
 			_LOG.debug("Codon alignment need translation for tree estimation...")
 			temp_result_file = "%s/iteration%d_temp_result.fas"%(self._workdir, self._cur_iter)
 			new_concatenated_alignment.write_to_path(temp_result_file)
@@ -159,7 +157,7 @@ class CoEstimator(JobBase):
 		_LOG.debug("Tree estimation done.")
 		def score_improved(new_score):
 
-			if self._tree_estimator.name == "prankTree":
+			if self._tree_estimator.name == "pranktree":
 				if self._best_score is None:
 					self._best_score = self._prank_score
 					return True
