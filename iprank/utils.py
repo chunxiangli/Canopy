@@ -701,7 +701,7 @@ class TreeEstimator(Tool):
 		raise NotImplementedError("Abstract TreeEstimator class.")
 
 class PrankTree(TreeEstimator):
-        name = "prankTree"
+        name = "pranktree"
 
         def __init__(self, file_manager, **kwargs):
                 TreeEstimator.__init__(self, file_manager, **kwargs)
@@ -745,7 +745,7 @@ class FastTree(TreeEstimator):
 		model = None	
 
 		if "dna" == alignment.datatype:
-			model = "-nt -gtr"
+			model = "-nt -gtr -gamma"
 		elif "protein" == alignment.datatype:
 			model = "-wag"
 		else:
