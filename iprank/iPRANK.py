@@ -33,7 +33,6 @@ def initial_configuration():
 	else:
 		#if running on cluster, get the local temporary directory, then copy compressed files to archive directory
                 if "TMPDIR" in os.environ:
-			#dir_name = os.path.join("/var/tmp", dir_name)
                         dir_name = os.path.join(os.environ["TMPDIR"], dir_name)
 
                 dir_name = os.path.realpath(dir_name)
@@ -237,7 +236,7 @@ def create_tools(tmpFileM, need_translator):
 		else:
 			Config.translator = initial_tool(translator_name, 3)
 
-def read_input_files():
+def read_input_files(align_datatype):
 	input_seqs = None
 	is_multi_alignments = False
 	initial_score = None
@@ -255,9 +254,9 @@ def read_input_files():
 		if os.path.isdir(seq_path):
 			is_multi_alignments = True
 			seq_path = [ "%s/%s"%(seq_path, f) for f in os.listdir(seq_path) if not f.startswith(".")]
-			input_seqs = MultiAlignments()	
+			input_seqs = MultiAlignments(align_datatype)	
 		elif os.path.isfile(seq_path):
-			input_seqs = Alignment()
+			input_seqs = Alignment(align_datatype)
 
 		name_map = input_seqs.read_from_path(seq_path, input_format, data_datatype)
 
@@ -320,7 +319,7 @@ def main():
 		
 		tree_model = Config.user_config[Config.tree_estimator.name].get("%s.model"%Config.tree_estimator.name, "")
 
-		input_seqs, initial_tree, initial_score, is_multi_alignments, name_map = read_input_files()
+		input_seqs, initial_tree, initial_score, is_multi_alignments, name_map = read_input_files(align_datatype)
 
 	        #Original input file
 		saved_input_path = store_result(input_seqs, "input", initial_tree, name_map=name_map)
@@ -453,7 +452,7 @@ def main():
 
 			return result_path, result_tree, result_score
 
-		writeXML = lambda: "-showxml" in Config.main.get("output_options", [])
+		writeXML = lambda: "showxml" in Config.main or "showall" in Config.main
 
 		saved_result_path = None
 		best_tree = None
@@ -611,7 +610,7 @@ def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
                                                             delete_temps=delete_temps)  
 
 	store_result(prank_alignment,  'twophase_prankGT', prank_tree)
-	if Config.tree_estimator.name != "prankTree":
+	if Config.tree_estimator.name != "pranktree":
                         with open(os.path.join(Config.work_directory, "twophase_prankGT_prank_score.txt"), 'w') as pscore:
                                 pscore.write("%.5f %s"%(prank_score, last_score))
 

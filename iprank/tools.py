@@ -131,11 +131,12 @@ class Alignment(dict, object):
 	"""
 		A simple class that maps taxa names to sequences.
 	"""
-	def __init__(self):
+	def __init__(self, align_datatype=None):
 		dict.__init__(self)
 		self._datatype = None
 		self.names = []
 		self.dna_freqs = None
+		self.align_datatype = align_datatype
 
 	@property
 	def datatype(self):
@@ -210,10 +211,15 @@ class Alignment(dict, object):
 
 		records = SeqIO.parse(file_obj, schema)
 
-		for re in records: 
-			new_name =self.record_name(re.id, name_map=name_map)
+		for rec in records: 
+			new_name =self.record_name(rec.id, name_map=name_map)
 			if keys is None or new_name in keys:
-				self[new_name] = str(re.seq)		
+				seq_str = str(rec.seq)
+
+				if "CODON" == self.align_datatype and "dna" == self.datatype:
+					assert not len(seq_str)%3, "The length of sequence '%s' in file '%s' is not multiple of three!"%(rec.id, os.path.basename(file_obj.name))
+
+				self[new_name] = seq_str
 
 		if keys is not None:
 			self.names = keys
@@ -253,7 +259,7 @@ class Alignment(dict, object):
 		"""
 			Return a new alignment with all gaps and missing sequences removed.
 		"""
-		new_alignment = Alignment()
+		new_alignment = Alignment(self.align_datatype)
 		new_alignment.datatype = self._datatype
 		for name in self.names:
 			new_seq = re.sub(_INDEL, '', self[name])
@@ -264,7 +270,7 @@ class Alignment(dict, object):
 		return new_alignment
 
 	def sub_alignment(self, keys):
-		sub_alignment = Alignment()
+		sub_alignment = Alignment(self.align_datatype)
 		sub_alignment.datatype = self._datatype
 		sub_alignment.dna_freqs = self.dna_freqs
 
@@ -313,10 +319,11 @@ class Alignment(dict, object):
 		self.dna_freqs = [ (num*1.0)/total_num for num in dna_freq]
 
 class MultiAlignments(dict, object):
-	def __init__(self):
+	def __init__(self, align_datatype=None):
 		dict.__init__(self)
 		self.names = []
 		self._num_taxa = 0
+		self.align_datatype = align_datatype
 
 	@property
 	def datatype(self):
@@ -354,7 +361,7 @@ class MultiAlignments(dict, object):
 			if prefix != "":
 				alignment_name = alignment_name.split(prefix)[1]
 			new_name = self.record_name(alignment_name)
-			new_alignment = Alignment()
+			new_alignment = Alignment(self.align_datatype)
 			name_map = new_alignment.read_from_path(filename, file_format=file_format, data_type=self._datatype, name_map=name_map)
 			if not new_alignment.is_empty():
 				self[new_name] = new_alignment
@@ -388,7 +395,7 @@ class MultiAlignments(dict, object):
                                                                        name_map=name_map)
 
 	def concatenate(self):
-		concatenated_alignment = Alignment()
+		concatenated_alignment = Alignment(self.align_datatype)
 		concatenated_alignment.datatype = self[self.names[0]].datatype
 		is_aligned = self[self.names[0]].is_aligned()
 
@@ -415,7 +422,7 @@ class MultiAlignments(dict, object):
 
 
 	def sub_alignment(self, keys):
-		sub_align = MultiAlignments()
+		sub_align = MultiAlignments(self.align_datatype)
 		sub_align.names = self.names
 
 		for alignment_name in self.names:
@@ -437,7 +444,3 @@ class MultiAlignments(dict, object):
 	@num_taxa.setter
 	def num_taxa(self, num):
 		self._num_taxa = num
-
-if __name__ == "__main__":
-	align = Alignment()
-	align.read_from_path("/home/czli/Documents/thesis/iprank/tree1_TRUE_1.phy", "phylip")
