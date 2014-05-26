@@ -254,6 +254,7 @@ class MainWorker(object):
 		for i in range(cur_num, new_num):
 			w = Worker()
 			self._worker_list.append(w)
+			w.setDaemon(True)
 			w.start()
 		self._workers_lock.release()
 
