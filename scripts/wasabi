@@ -1,0 +1,17 @@
+#!/bin/bash
+###########################################################
+##three parameters for launching wasabi on the webbrowser##
+##$1:userid of wasabi				 	 ##
+##$2:the target xml file                                 ##
+##$3:library name for the target result                  ##
+###########################################################
+
+print_help(){
+	printf "\033[96musage: ./scripts/wasabi userid filename name\n\033[0m" 
+}
+
+if [ $1 == '--help' ];then
+	print_help
+else
+	python iprank/wasabi.py $1 $2 $3
+fi
