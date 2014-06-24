@@ -12,6 +12,7 @@ import os, re, commands
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from Bio.Alphabet import generic_dna, generic_protein
 from iprank.logger import get_logger
 from iprank.tree import PhylogeneticTree
 from iprank.file_manage import remove_files
@@ -33,9 +34,11 @@ def format_alignment_result_in_directory(directory, format="phylip", datatype="D
 	if format == "nexus":
 		file_suffix = ".nex"
 	name_map = {}
+
 	for f in target_files:
 		align = Alignment()
 		name_map = align.read_from_path(f, data_type=datatype, name_map=name_map)
+
 		result_file = f[:-4] + file_suffix	
 		if format == "phylip":
 			align.write_to_path(result_file, file_format=format) 
@@ -46,11 +49,8 @@ def format_alignment_result_in_directory(directory, format="phylip", datatype="D
 			tree_file = f[:-4] + ".dnd"	
 			if os.path.exists(tree_file):
 				phy_tree = PhylogeneticTree.read_from_path(tree_file)
-
-				if format == "phylip":
-					phy_tree.rename_leaf_names(name_map, restore=False)
-
 				open(result_file, 'a').write("begin trees;\ntree PRANK = %s\nend;"%phy_tree.as_newick_string())
+
 	if format == "phylip" and name_map.keys() != name_map.values():
 		with open(os.path.join(directory, "name_map.txt"), "w") as name_map_file:
                                 name_map_file.write("\n".join(["%s %s"%(name, origin_name) for name, origin_name in name_map.iteritems()]))
@@ -238,6 +238,7 @@ class Alignment(dict, object):
 	def write_to_stream(self, stream, schema="fasta", name_suffix="", suppress_ancester=False, name_map=None):
 		records = []
 		restore = False
+		alphabet_dict = {"dna":generic_dna, "protein":generic_protein}
 
 		if schema !="phylip" and isinstance(name_map, dict):
 			restore = True
@@ -249,9 +250,9 @@ class Alignment(dict, object):
 				return name
 
                 if suppress_ancester:
-                        records=[SeqRecord(Seq(self[name]), id=get_name(name)+name_suffix, description="") for name in self.names if not name.startswith("#")]
+                        records=[SeqRecord(Seq(self[name], alphabet_dict[self._datatype]), id=get_name(name)+name_suffix, description="") for name in self.names if not name.startswith("#")]
                 else:
-                        records=[SeqRecord(Seq(self[name]), id=get_name(name)+name_suffix, description="") for name in self.names]
+                        records=[SeqRecord(Seq(self[name], alphabet_dict[self._datatype]), id=get_name(name)+name_suffix, description="") for name in self.names]
 
 		SeqIO.write(records, stream, schema)
 
@@ -369,7 +370,6 @@ class MultiAlignments(dict, object):
 		return name_map
 
 	def write_to_path(self, file_path, file_format="fasta", name_suffix="", suppress_ancester=False, name_map=None):
-		#TODO:Maybe only give the ouput directory
 		if isinstance(file_path, list):
 			num_file_path = len(file_path)
 			num_alignments = len(self)

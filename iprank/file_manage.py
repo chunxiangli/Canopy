@@ -160,27 +160,7 @@ class TempFileManager(object):
 		for del_dir in del_dirs:
 			dir_real_path = os.path.realpath(del_dir)
 			if os.path.exists(dir_real_path):
-				flist = os.listdir(dir_real_path)
-				for f in flist:
-					f_real = os.path.join(dir_real_path, f)
-					if os.path.isdir(f_real):
-						try:
-							self.remove_dirs([f_real])
-						except ValueError:
-							sys.stderr.write()
-						except OSError:
-							sys.stderr.write()
-					else:
-						try:
-							os.remove(f_real)
-						except OSError:
-							sys.stderr.write("The file %s can not be removed."%f_real)
-							
-				try:
-					os.rmdir(dir_real_path)
-				except OSError:
-					pass
-					
+				shutil.rmtree(dir_real_path)
 
 			self._directories_created_lock.acquire()
 			try:

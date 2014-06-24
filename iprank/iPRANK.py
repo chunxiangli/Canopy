@@ -3,7 +3,7 @@ from iprank import msg_exit
 if sys.version_info < (2,7) :
     msg_exit("Sorry: requires python version 2.7 or greater (but not python 3.x)")
 
-import os, time, random, time, shutil
+import os, time, shutil
 from iprank.config import Config, ConfigAndOptionParser, get_number_of_cpus
 from iprank.logger import MESSENGER, get_logger
 from iprank.tools import Alignment, MultiAlignments, format_alignment_result_in_directory, alignment_accuracy
@@ -19,31 +19,31 @@ _RunningJob = None
 def initial_configuration():
 	user_config = ConfigAndOptionParser()
 	user_config.read_from_commandline()
-	dir_name = user_config["main"].get("work_directory", os.curdir)
 	seq_path = os.path.realpath(os.path.expanduser(user_config["main"]["seq"]))
 	user_config["main"]["seq"] = seq_path
 	if not os.path.exists(seq_path):
 		MESSENGER.send_error("Input sequences file doesn't exist or not a valid file.")
 		raise ValueError("Input sequences file donesn't exist or not a valid file")
 
-	input_dir = os.path.dirname(seq_path)
-	job_name = user_config["main"].get("name", "job")
+	dir_name = user_config["main"].get("work_directory", os.curdir)
 	if dir_name is None:
-		Config.work_directory = os.path.join(input_dir, job_name)
+		dir_name = os.path.dirname(seq_path)
 	else:
 		#if running on cluster, get the local temporary directory, then copy compressed files to archive directory
-                if "TMPDIR" in os.environ:
-                        dir_name = os.path.join(os.environ["TMPDIR"], dir_name)
-
                 dir_name = os.path.realpath(dir_name)
+
 		parent_dir, child_dir = os.path.split(dir_name)
+                if "TMPDIR" in os.environ:
+			parent_dir = os.environ["TMPDIR"]
+                        dir_name = os.path.join(parent_dir, child_dir)
 
 		if not os.path.exists(parent_dir):
 			raise OSError("The parent directory of the specified main work direcotry %s doesn't exist."%dir_name)
                 elif not os.path.exists(dir_name):
                         os.makedirs(dir_name)
 
-                Config.work_directory = os.path.join(dir_name, job_name)
+	job_name = user_config["main"].get("name", "job")
+        Config.work_directory = os.path.join(dir_name, job_name)
 
 	if os.path.exists(Config.work_directory):
 		wdir = Config.work_directory	
@@ -61,6 +61,7 @@ def initial_configuration():
 
 	MESSENGER.out_log_streams.append(Config.log_stream)
 	MESSENGER.err_log_streams.append(Config.log_stream)
+
 	if not "num_cpus" in user_config["main"]:
 		user_config["main"]["num_cpus"] = 1 
 	else:
@@ -68,7 +69,7 @@ def initial_configuration():
 		if num_cpus > 1:
 			real_num_cpus = get_number_of_cpus()
 			if num_cpus > real_num_cpus:
-				user_config["main"]["num_cpus"] = real_num_cpus
+				user_config["main"]["num_cpus"] = max([1, real_num_cpus-1])
 				MESSENGER.send_warning("Only %d cpus are detected."%real_num_cpus)
 
 	#save the configuration
@@ -243,11 +244,9 @@ def read_input_files(align_datatype):
 	initial_tree = None
 
 	try:
-		
 		data_datatype = Config.main.get("datatype", "DNA")
 		input_format = Config.main.get("format", "fasta")
 
-		
 		#reading sequences
 		seq_path = Config.main["seq"]
 		err_msg = "Input sequence file is empty."
@@ -284,8 +283,12 @@ def read_input_files(align_datatype):
 				if name_map is not None:
 					initial_phy_tree.rename_leaf_names(name_map, restore=False)
 				initial_tree = initial_phy_tree.as_newick_string()
-				Config.main["tree"] = initial_tree
-		#TODO:whether need to accept initial tree and initial score for multiple alignments
+				#tell rooted or unrooted tree
+				initial_phy_tree.resolve_polytomies()
+				istring = initial_phy_tree.as_newick_string()
+				if istring.count("(") == istring.count(","):
+					Config.main["rooted"] = True
+		#TODO:whether need to accept (an) initial tree(s) and (an) initial score(s) for multiple alignments
 
 		return input_seqs, initial_tree, initial_score, is_multi_alignments, name_map
 
@@ -320,6 +323,8 @@ def main():
 		tree_model = Config.user_config[Config.tree_estimator.name].get("%s.model"%Config.tree_estimator.name, "")
 
 		input_seqs, initial_tree, initial_score, is_multi_alignments, name_map = read_input_files(align_datatype)
+
+		MESSENGER.send_info("Read input:%.2gs"%(time.time()-start))
 
 	        #Original input file
 		saved_input_path = store_result(input_seqs, "input", initial_tree, name_map=name_map)
@@ -357,7 +362,7 @@ def main():
 										 id=name,
 										 tmp_dir=initial_temp,
 										 delete_temps=delete_temps)
-					jobQueue.put(job)
+					jobQueue.put(job, initial_input_seqs[name].get_num_taxa())
 					_RunningJob.append(job)
 
 				for job in _RunningJob:
@@ -375,7 +380,7 @@ def main():
 									delete_temps=delete_temps,
 									model=tree_model)
 					_RunningJob = tree_estimate_job
-					jobQueue.put(tree_estimate_job)
+					jobQueue.put(tree_estimate_job, initial_input_seqs[name].get_num_taxa())
 					initial_score[name], initial_tree[name] = tree_estimate_job.get_result()
 					_RunningJob = None	
 				MESSENGER.send_info("Initial tree estimation done.")
@@ -387,7 +392,7 @@ def main():
 									 delete_temps=delete_temps,
 									 description="whole")
 				_RunningJob = job
-				jobQueue.put(job)
+				jobQueue.put(job, input_seqs.get_num_taxa())
 				initial_input_seqs.update(job.get_result())
 				_RunningJob = None
 				MESSENGER.send_info("Initial alignment done.")
@@ -399,12 +404,14 @@ def main():
 							       delete_temps=delete_temps,
 							       model=tree_model)
 				_RunningJob = job
-				jobQueue.put(job)
+				jobQueue.put(job, initial_input_seqs.get_num_taxa())
 				initial_score, initial_tree = job.get_result()
 				_RunningJob = None
 				MESSENGER.send_info("Initial tree estimation done.")
 			
 			saved_initial_result_path = store_result(initial_input_seqs, "initial", initial_tree, initial_score, name_map)
+
+			MESSENGER.send_info("Initial done:%.2gs"%(time.time()-start))
 
 			if not Config.main.get("test", False):
 				initial_input_seqs = None
@@ -418,14 +425,15 @@ def main():
 		MESSENGER.send_info("Iterative coestimation start...")
 
 		start_co = time.time()
-		def coestimate_single(input, tree, score, name=""):		
+		def coestimate_single(align, tree, score, name=""):		
+			jobQueue.whole_size = align.get_num_taxa()
 			global _RunningJob
 			co_temp = tempFileManager.create_subdir("divide_and_merge%s"%('_'+name))
 
 			coestimator = CoEstimator(Config.aligner,
 						  Config.merger,
 						  Config.tree_estimator,
-						  input,
+						  align,
 						  tree,
 						  file_manager=tempFileManager,
 						  score=score,
@@ -434,7 +442,7 @@ def main():
 						  delete_temps=delete_temps,
 						  translator=getattr(Config, "translator", None),
 						  num_cpus=num_cpus,
-						  max_prob_size=Config.main.get("max_prob_size", input.get_num_taxa()),
+						  max_prob_size=Config.main.get("max_prob_size", align.get_num_taxa()),
 						  need_sub_iter=Config.main.get("need_sub_iter", False),
 						  save_option=save_option, 
 						  without_guide=Config.main.get("without_guide",False),
@@ -443,7 +451,8 @@ def main():
 						  tree_format=Config.main.get("tree_format", "newick"),
 						  output_options=Config.main.get("output_options",[]),
 						  id=name,
-						  name_map=name_map)
+						  name_map=name_map,
+						  rooted=Config.main.get("rooted", False))
 
 			_RunningJob = coestimator
 			coestimator.start()	
@@ -474,7 +483,8 @@ def main():
 							delete_temps=delete_temps,
 							model=tree_model)
 			_RunningJob = tree_estimate_job
-			jobQueue.put(tree_estimate_job)
+			jobQueue.whole_size = None
+			jobQueue.put(tree_estimate_job, concatenate_result.get_num_taxa())
 			best_score, best_tree = tree_estimate_job.get_result()
 			saved_concatenate_result = store_result(concatenate_result, "species", best_tree, best_score, name_map=name_map)
 
@@ -529,10 +539,11 @@ def main():
 
 		iprank_span = time.time()-start_co
 
-		MESSENGER.send_info("Iterative coestimation Finished.\n Time:%.2g"%iprank_span)
+		MESSENGER.send_info("Iterative coestimation Finished. Time:%.2gs"%iprank_span)
 
 		if Config.main.get("test", False):
 			two_phase(initial_tree, tempFileManager, input_seqs, delete_temps)
+
 
 		#deal with tempfiles
 		_LOG.info("save_option %s"%save_option)
@@ -550,15 +561,13 @@ def main():
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
 		MESSENGER.send_error("At main stage. Msg:%s. Type:%s, FileName:%s, Line:%d"%(str(e), exc_type, fname, exc_tb.tb_lineno))
 	finally:
-		MESSENGER.send_info("%.2gs"%(time.time()-start))
-
 		mainWorker.stop_workers()
 
-		total_time = time.time() - start
 		if "archive_directory" in Config.main:	
 			MESSENGER.send_info("post_file")
 			post_file_process()
 
+		total_time = time.time() - start
 		MESSENGER.send_info("finished. Total time:%.2gs"%total_time)
 		try:
 			Config.log_stream.close()
@@ -566,7 +575,7 @@ def main():
 			pass
 	
 def two_phase(initial_tree, tempFileManager, alignment, delete_temps):
-	if initial_tree is not None:
+	if initial_tree is not None and not Config.main.get("rooted", False):
                 phy_tree = PhylogeneticTree.read_from_string(initial_tree)
                 phy_tree.reroot_at_midpoint(update_splits=True)
                 phy_tree.resolve_polytomies()

@@ -1,17 +1,22 @@
 import os, sys, time
 from StringIO import StringIO
-from Queue import Queue
+from Queue import PriorityQueue
 from threading import Thread, Event, Lock
 from subprocess import Popen, PIPE
 from iprank.logger import get_logger
 from iprank.file_manage import open_file
 
 _LOG = get_logger(__name__)
+_try_times = 1
 
-class JobQueue(Queue):
-	def put(self, job):
-		#_LOG.info("Job added:%s"%" ".join(job._command))
-		Queue.put(self, job)
+class JobQueue(PriorityQueue):
+	whole_size = None
+	def put(self, job, size):
+		prior = 0
+		if self.whole_size is not None:
+			prior = self.whole_size - size
+		_LOG.info("Job added:prior:%d"%prior)
+		PriorityQueue.put(self, (prior, job))
 
 jobQueue = JobQueue()
 
@@ -193,17 +198,17 @@ class Worker(Thread):
 		while not self._exitFlag:
 			if not jobQueue.empty():
 				result = None
-				job = jobQueue.get()
+				size, job = jobQueue.get()
 				try:
 					_LOG.info("Worker %d: Job start: %s."%(self.id, job.name))
 					job.start()
 				except Exception as e:
-					self.exception_handler(job, e)
+					self.exception_handler(job, size, e)
 				else:
 					try:
 						result = job.get_result()
 					except Exception as e:
-						self.exception_handler(job, e)
+						self.exception_handler(job, size, e)
 					else:
 						if result is not None:	
 							_LOG.info("Worker %d: Job finished: %s."%(self.id, job.name))
@@ -215,11 +220,11 @@ class Worker(Thread):
 		msg = "Worker %d: %s."%(self.id, msg)
                 _LOG.error(msg)
 
-	def exception_handler(self, job, e):
+	def exception_handler(self, job, size, e):
 		#TODO:whether need to rerun job
-		if job.run_time < 1:
+		if job.run_time < _try_times:
 			_LOG.info("reput job into queue")
-			jobQueue.put(job)
+			jobQueue.put(job, size)
 		else:   
 			self.log_error(str(e))
 			raise e

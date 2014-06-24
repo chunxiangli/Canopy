@@ -65,7 +65,6 @@ def read_raxml_results(workdir, del_dirs, file_manager):
                         break
         raxml_log = os.path.join(workdir, "RAxML_log.%s"%tree_id)
 	with open(raxml_log, "rU") as log_file:
-		#TODO;need to check how to read the score for other model
         	log_score = filter(lambda x: "Final GAMMA_based Score of best tree" in x, log_file) 
 
         score = None
@@ -274,7 +273,7 @@ class Tool(object):
                 		err_msg = "Executable file %s not found. Please install %s and/or configure its location correctly." % (self.cmd, self.name)
             		raise ValueError(err_msg)
 
-	def check_executable(self):#TODO: before execute need to check its executable
+	def check_executable(self):
 		r, msg = file_checker(self.cmd)
 		if not r:
 			return (r, msg)
@@ -432,7 +431,7 @@ class Prank(Aligner):
 		if num_taxa > 200:
 			command.append("-uselogs")
 
-		_LOG.info("prank:command wrapped %s"%" ".join(command))
+		_LOG.debug("prank:command wrapped %s"%" ".join(command))
 		_LOG.debug("Prank delete_temps:%s"%kwargs.get("delete_temps", self.delete_temps))
 
 		return self._add_postprocessor(ofn+result_suffix,
@@ -890,16 +889,15 @@ class PhyML(TreeEstimator):
 
                 model = kwargs.get("model", None)
                 if "dna" == alignment.datatype:
-			if model is None or"" ==  model:
+			if model is None or "" ==  model:
                         	model = "HKY85"
-                    	#TODO:verify this when read config file
-                        if model not in ["HKY85", "JC69", "K80", "F81", "F84", "TN93", "GTR", "custom"]:
+                        elif model not in ["HKY85", "JC69", "K80", "F81", "F84", "TN93", "GTR", "custom"]:
                                 raise ValueError("The %s model is not available for PhyML."%model)
                 elif "protein" == alignment.datatype:
-			if model is None or"" ==  model:
-                        	model = "WAG"
                         data_type = "aa"
-                        if model not in ["LG", "WAG", "JTT", "MtREV", "Dayhoff", "DCMut", "RtREV", "CpREV", "VT", "Blosum63", "MtMam", "MtArt", "HIVw", "HIVb", "custom"]:
+			if model is None or "" ==  model:
+                        	model = "WAG"
+                        elif model not in ["LG", "WAG", "JTT", "MtREV", "Dayhoff", "DCMut", "RtREV", "CpREV", "VT", "Blosum63", "MtMam", "MtArt", "HIVw", "HIVb", "custom"]:
                                 raise ValueError("The %s model is not available for PhyML."%model)
                 else:  
                         raise ValueError("Datatype '%s' not suppported by %s"%(str(alignment.datatype), self.name))

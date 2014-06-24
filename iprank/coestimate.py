@@ -62,7 +62,6 @@ class CoEstimator(JobBase):
 
 		self._workdir = self._kwargs.get("tmp_dir", os.curdir)
 		self._cur_iter = 0
-		self._start_time = time.time()
 		self._num_cpus = self._kwargs.get("num_cpus", 1)
 
 		self._name_encode = False
@@ -73,8 +72,9 @@ class CoEstimator(JobBase):
 
 		k = dict(self._kwargs)
 		k["score"] = None
+		#the number of threads for sub-iteration
 		if self._num_cpus > 1:
-			k["num_cpus"] = 2
+			k["num_cpus"] = 1
 
 		try:
 			while self._keep_iterating():
@@ -85,14 +85,14 @@ class CoEstimator(JobBase):
 				MESSENGER.send_info("Iteration %d: align start..."%(self._cur_iter))
 				self.align(**k)
 
-				MESSENGER.send_info("Iteration %d: align done."%(self._cur_iter))
+				MESSENGER.send_info("Iteration %d: align done.Time:%.2gs"%(self._cur_iter, time.time() - self._start_time))
 				
 				#estimate new tree and check whether got improved
    				new_score = None
                                 if self._num_taxa > 3:
                                         MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
                                         new_score = self._update_tree(cur_iter_work_tmp_dir)
-                                        MESSENGER.send_info("Iteration %d: tree estimation done."%(self._cur_iter))
+                                        MESSENGER.send_info("Iteration %d: tree estimation done.Time:%.2gs"%(self._cur_iter, time.time() - self._start_time))
                                         if not self._subiter:
                                                 self._store_iterational_tree_result(new_score)
 
@@ -179,7 +179,8 @@ class CoEstimator(JobBase):
 
 	def align(self, **kwargs):
 		phy_tree = PhylogeneticTree.read_from_string(self._tree)
-        	phy_tree.reroot_at_midpoint(update_splits=True)
+		if not kwargs.get("rooted", False):
+        		phy_tree.reroot_at_midpoint(update_splits=True)
         	phy_tree.resolve_polytomies()
 
 		MESSENGER.send_info("Create align job")
@@ -229,11 +230,10 @@ class CoEstimator(JobBase):
                                                        id=self.id,
                                                        description=kwargs.get("description", "whole"))
 			if not self._subiter:
-				jobQueue.put(job)
+				jobQueue.put(job, self._num_taxa)
 			else:
 				try:
 					job.start()
-					job.get_result()
 				except Exception as e:
 					raise e
 
@@ -313,7 +313,6 @@ class CoEstimator(JobBase):
 	def _divide_and_merge(self, alignment, phy_tree, **kwargs):
                 work_dir = kwargs.get("tmp_dir", os.curdir)
 		#generate the AlignMergeTree
-		_ALIGN_JOBS = []
 	
 		_LOG.debug("Start split...")
 		alignMergeTree = AlignMergeTree(phy_tree, alignment, work_dir, self._aligner, self._merger, self._tree_estimator, **kwargs)
@@ -323,13 +322,10 @@ class CoEstimator(JobBase):
 		_merge_jobs = []
 		_LOG.debug("Start merge...")
 		while _MERGE_NODES:
-			update = False
-
 			for node in _MERGE_NODES:
 				job = node._create_merge_job()
 				if job:
-					update = True
-					jobQueue.put(job)
+					jobQueue.put(job, node._num_taxa)
 					_merge_jobs.append(job)
 					_MERGE_NODES.remove(node)
 					if not _MERGE_NODES:#return the root job
@@ -391,7 +387,6 @@ class CoEstimator(JobBase):
 		return self._result
 
 _MERGE_NODES = []
-_ALIGN_JOBS = []
 class AlignMergeTree(object):
         def __init__(self, phy_tree, alignment, work_dir, aligner, merger, tree_estimator, **kwargs):
                 self._phy_tree = phy_tree
@@ -440,21 +435,22 @@ class AlignMergeTree(object):
 				t1, t2, self.merge_dist1, self.merge_dist2 = self._phy_tree.bipartition_by_longest_internal_edge()	
 			
 			k = dict(self._kwargs)
+			descrip = k["description"]
 			file_manager = self._kwargs.get("file_manager")
 			rChild_wdir = file_manager.create_temp_subdir(self._work_dir, '0')
 			a1 = self._alignment.sub_alignment(t1.leaf_node_names())
-			k["description"] += '/0'
+			k["description"] = descrip + '/0'
 			self._rChild = AlignMergeTree(t1, a1, rChild_wdir, self.aligner, self.merger, self.tree_estimator, **k)
 
 			lChild_wdir = file_manager.create_temp_subdir(self._work_dir, '1')
 			a2 = self._alignment.sub_alignment(t2.leaf_node_names())
-			k["description"] += '/1'
+			k["description"] = descrip + '/1'
 			self._lChild = AlignMergeTree(t2, a2, lChild_wdir, self.aligner, self.merger, self.tree_estimator, **k)
 			_MERGE_NODES.append(self)
 		else:
 			_LOG.debug("subalign create job")
 			job = self._create_align_job()
-			jobQueue.put(job)
+			jobQueue.put(job, self._num_taxa)
 
 	def _create_align_job(self):
 		file_manager = self._kwargs.get("file_manager")
@@ -468,6 +464,7 @@ class AlignMergeTree(object):
 			del k["output_options"]
 			del k["name_map"]
                         k["tmp_dir"] = self._work_dir
+			k["rooted"] = True
 			if "score" in k:
 				del k["score"]
 
