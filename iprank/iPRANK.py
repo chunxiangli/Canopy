@@ -413,14 +413,17 @@ def main():
 
 			MESSENGER.send_info("Initial done:%.2gs"%(time.time()-start))
 
-			if not Config.main.get("test", False):
-				initial_input_seqs = None
-
 			if need_translator:
+				if Config.aligner.name != "prank": 
+					input_seqs = initial_input_seqs
+
 				back_translated_path = translate_data(Config.translator,
 								      saved_initial_result_path,
 								      Config.work_directory,
 								      dna_path=saved_input_path)
+			
+			if not Config.main.get("test", False):
+				initial_input_seqs = None
 
 		MESSENGER.send_info("Iterative coestimation start...")
 
@@ -501,9 +504,9 @@ def main():
 				input_seqs.read_from_path(saved_result_path)
 				write_xml(Config.work_directory, "result_final", input_seqs, best_tree, name_map=name_map)
 
-                #If the alignment target is PROTEIN while the input sequences are in DNA, we need back translate the final result into DNA.
+                #If the alignment target is PROTEIN while the input sequences are DNA, we need back translate the final result into DNA.
 		translate_result_path = None
-                if need_translator and "PROTEIN" == align_datatype:
+                if need_translator and ( "PROTEIN" == align_datatype or Config.aligner.name != "prank" ):
 			_LOG.debug("need back translate")
 			translate_file_name = "result_translated"
 			if is_multi_alignments:
@@ -526,7 +529,7 @@ def main():
 			if is_multi_alignments:
 				filter_files = saved_input_path
 
-			if need_translator and align_datatype == "PROTEIN":
+			if need_translator and ( align_datatype == "PROTEIN" or Config.aligner.name != "prank" ):
 				if is_multi_alignments:
 					filter_files.extend(translate_result_path)
 				else:
