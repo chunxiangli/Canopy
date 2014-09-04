@@ -1,0 +1,45 @@
+About Canopy:
+	Canopy is an iterative alignment tool with the latest version of PRANK implemented in Python. Meanwhile, it supports some other existing aligner tools, such as MAFFT, MUSCLE, ClustalW and PRANK. Additionally, RAxML, FastTree and PhyMLare also available for tree inference.
+
+	Basically, canopy is consisted of two steps: initial tree estimation and iterative improvement. At the first step, a initial tree is estimated based on a fast initial alignment. Then at the iterate improvement step, the input data will be divided into small subsets by recursively splitting the estimated guide tree to make the size of the result trees not larger than user defined threshold according to the specified decomposition strategy by removing longest branch or dividing at seed node. These subsets will be aligned simultaneously by PRANK and then their alignment results will be merged into a resultant alignment according to the guide tree. Based on the whole alignment, a unrooted tree estimatd by RAxML will be accepted as the new guide tree for next iteration. Such an improvement step will be repeated pre-defined times and then the tree/alignment pair with the highest RAxML likelihood score will be output as the final result.
+
+Using Canopy:
+1) main options
+	There are three ways to run Canopy:
+  1. You can give all parameters in a config file and then run:
+      canopy config_file
+
+  2. You can also specify parameters in command line:
+      canopy --name=job_name --seq=input_file --max_iter=maximum_iter --num_cpus=num_cpus --max_prob_size=size --prank.args=prank_args
+      
+  3. If you want to reuse some parameters in a previous config file, you can reuse the config file and then overwrite parameters in command line:
+      canopy config_file --name=job_name --seq=input_file --max_iter=maximum_iter
+
+In the above examples, 'input_file' is supposed to be in FASTA format and the data are DNA sequences. Otherwise, you should change the format using "--format" option and the datatype of the input file using "--datatype" option. The reading and writing of sequence file are implemented using SeqIO in Biopython and thus '--format' accepts the format supported by Bio.SeqIO. '--name' is the job name which will be the name of the directory where the output files are stored.
+
+	Canopy uses precompiled tools in its source directory with some default parameters. You can give extra parameters to those integrated tools and also use your own installed version. If using the config file, you need create a separate module as following:
+  [TOOL_NAME]
+  path=executable_path
+  args=parameter_list
+While, in command:
+  --TOOL_NAME.path=executable_path --TOOL_NAME.args="paramete_list"
+where, TOOL_NAME should be replaced with the real name of the tool. For tree inference tools, the model can be specified with "model" in config file and "__TOOL_NAME.model" in command line. By defaul, RAxML uses the 'GTRGAMMA' model for DNA data and the 'PROTCATWAGF' model for protein data.
+
+	In addition, the default value of num_cpus is 1. If the given number of cpus is more than the available cpus in the current working machine, it will correct that parameter to the available number. If you don't define the maximum iteration times, the iterate improvement step will repeat 5 times.
+
+2) output options:
+	By default, it stores input data, the results of its initial step and the final result pair. If you want to keep other intermediate files, please check 'save_option'. The format of output alignment file is supposed to be in FASTA, which can be changed by 'output_format' option. Meanwhile, the default format of output tree file is NEWICK. It can be changed to nexus by setting 'tree_format' option. 
+
+	Except of the alignment and its corresponding RAxML estimated tree pair, if the aligner is PRANK, the guide tree for the alignment will be output. Furthermore, additional information can be generated through setting the following options:
+	showxml: output the results in PRANK's own XML format
+	showanc: output the guide tree and the estimated ancestral sequences at each internal node
+	showevents: output events happened at each branch
+	showall: output all above information
+
+3) translated alignment and codon alignment
+	Canopy can align protein-coding DNA sequences in the codon model. And it also can translate the DNA sequences into protein and then align them. If provide DNA sequences and set 'align_datatype' to 'CODON', Canopy performs codon based alignment. While set 'align_datatype' to 'PROTEIN', translated alignment will be processed. The result alignment will be translated back into DNA while the corresponding aligned relationship will be kept. 
+
+4) multilocus alignment and species tree inference
+	If the '--seq' is a directory where only multiple sequence files from multilocus exist, Canopy will iteratively infer the alignment for each file separately and then estimate a single tree according to the concatenated alignment on all of the alignments.
+
+
