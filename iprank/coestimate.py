@@ -123,25 +123,25 @@ class CoEstimator(JobBase):
 			self._event_list.set()
 
 	def _update_tree(self, work_directory):
-		new_concatenated_alignment = self._alignment
+		new_alignment = self._alignment
 		new_alignment_num_taxa = self._alignment.get_num_taxa()
 
 		assert new_alignment_num_taxa == self._num_taxa, "The number of taxa of new alignment not equals the original number."
 		
 		_LOG.debug("Start tree estimation...")
 		
-		if self._alignment.align_datatype == "CODON":
+		if self._aligner.name == "prank" and self._alignment.align_datatype == "CODON":
 			_LOG.debug("Codon alignment need translation for tree estimation...")
 			temp_result_file = "%s/iteration%d_temp_result.fas"%(self._workdir, self._cur_iter)
-			new_concatenated_alignment.write_to_path(temp_result_file)
+			new_alignment.write_to_path(temp_result_file)
 
-			new_concatenated_alignment = Alignment()
+			new_alignment = Alignment()
 			translated_path = translate_data(self._translator, temp_result_file, self._workdir)
-			new_concatenated_alignment.read_from_path(translated_path, data_type="PROTEIN")
+			new_alignment.read_from_path(translated_path, data_type="PROTEIN")
 			remove_files([temp_result_file, translated_path])
 			_LOG.debug("translation done.")
 
-		tree_estimator = self._tree_estimator.create_job(new_concatenated_alignment,
+		tree_estimator = self._tree_estimator.create_job(new_alignment,
 								 num_cpus = self._num_cpus,
 								 tmp_dir=work_directory, 
 								 delete_temps=self._kwargs.get("delete_temps"),
@@ -151,7 +151,7 @@ class CoEstimator(JobBase):
 		self._job = tree_estimator
 		tree_estimator.start()
 		new_score, self._new_tree = tree_estimator.get_result()
-		new_concatenated_alignment = None
+		new_alignment = None
 		self._job = None
 
 		_LOG.debug("Tree estimation done.")
