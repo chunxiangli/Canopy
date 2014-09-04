@@ -1,22 +1,22 @@
-#!/bin/bash -l
+#!/bin/bash
 params=$@
 python_path=""
 run_color="92"
 error_color="91"
 
-run_iprank(){
-	${python_path}python -m 'iprank.iPRANK' $params
+run_canopy(){
+	python -m 'canopy.main' $params
 }
 
 choose_option(){
 	text="setup"
-	printf "\033[${error_color}m$*\n\033[0m"
-	if [ -z ${python_path} ] && [ -f env/bin/python ]; then
+	if [ -z $python_path ] && [ -f env/bin/python ]; then
 		text="resetup"
 		out_suffix=" in python virtual environment"
-		python_path=./env/bin/
+		python_path="env/bin/"
 		check_library
 	else
+		printf "\033[${error_color}m$*\n\033[0m"
 		printf "\033[33mPlease choose:\n"
 		printf "  1. exit (Install the requirement libraries manually and then run the script again.)\n"
 		printf "  2. ${text} python virtual environment.\n"
@@ -28,15 +28,10 @@ choose_option(){
 			if [[ $? != 0 ]]; then
 				exit $?
 			fi
-			python_path=./env/bin/
 		else
 			exit 1
 		fi
 	fi
-
-	out Launching Python from env/bin/
-	run_iprank
-	exit $?
 }
 
 out(){  
@@ -44,26 +39,42 @@ out(){
 }
 
 check_library(){
+	err_message=""	
 	${python_path}python -c "import Bio" > /dev/null 2>&1
 	if [[ $? != 0 ]]; then
-		choose_option Biopython is not installed
+		err_message="Biopython(>=1.58) is not installed\n"
 	else
 		Biopython_version=`${python_path}python -c "import Bio;print Bio.__version__"`
 		if [[ $Biopython_version < "1.58" ]]; then
-			choose_option Biopython version should be 1.58 or greater
+			err_message="Biopython version should be 1.58 or greater\n"
 		fi
 	fi
 
 	${python_path}python -c "import dendropy" > /dev/null	 2>&1
 	if [[ $? != 0 ]]; then
-		choose_option Dendropy is not installed
+		err_message=$err_message"Dendropy(>=3.10.0) is not installed"
 	else
 		dendropy_version=`${python_path}python -c "import dendropy;print dendropy.__version__"`
 		if [[ $dendropy_version < "3.10.0" ]]; then
-			choose_option Dendropy version should be 3.10.0 or greater
+			err_message=$err_message"Dendropy version should be 3.10.0 or greater"
+		fi
+	fi
+	
+	if [[ -n $err_message ]]; then
+		choose_option $err_message
+	else
+		if [ -n $python_path ]; then
+			out 'Virtual environment is ready to launch by "source env/bin/activate"' 
+		else
+			out Succed!
 		fi
 	fi
 }
 
-check_library
-run_iprank
+if [[ "$params" == "test" ]]; then
+	check_library
+elif [[ $params = wasabi* ]]; then
+	./scripts/$params
+else
+	run_canopy
+fi
