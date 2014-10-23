@@ -160,7 +160,10 @@ class TempFileManager(object):
 		for del_dir in del_dirs:
 			dir_real_path = os.path.realpath(del_dir)
 			if os.path.exists(dir_real_path):
-				shutil.rmtree(dir_real_path)
+				try:	
+					shutil.rmtree(dir_real_path)
+				except:#since tmp directory for PRANK can not be deleted, but it will be deleted later
+					pass
 
 			self._directories_created_lock.acquire()
 			try:

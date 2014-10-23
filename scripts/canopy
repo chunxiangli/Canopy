@@ -63,10 +63,10 @@ check_library(){
 	if [[ -n $err_message ]]; then
 		choose_option $err_message
 	else
-		if [ -n $python_path ]; then
+		if [ -n "$python_path" ]; then
 			out 'Virtual environment is ready to launch by "source env/bin/activate"' 
 		else
-			out Succed!
+			out Succeed!
 		fi
 	fi
 }

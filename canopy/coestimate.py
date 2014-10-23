@@ -275,8 +275,10 @@ class CoEstimator(JobBase):
 			if not self._subiter:	
 				_LOG.debug("start to store prank score")
 				log_file = os.path.join(wdir, "stdout.txt")
-				results = filter(lambda x: "Alignment score" in x, open(log_file))
-				self._prank_score = results[-1].split(':')[1].strip()
+				self._prank_score = 0
+				with open(log_file) as lfo:
+					results = filter(lambda x: "Alignment score" in x, lfo)
+					self._prank_score = results[-1].split(':')[1].strip()
 				_LOG.debug("prank score:%s"%self._prank_score)
 
 			if 'all' != self._save_option:
@@ -286,7 +288,8 @@ class CoEstimator(JobBase):
 			_LOG.debug("Just output the alignment result")
 			self._alignment.write_to_path(result_align_path, name_map=self._name_map)
 			if self._best_score is not None:
-				open(os.path.join(Config.work_directory, "%s_score.txt"%file_prefix), 'w').write("%.5f"%(self._best_score))
+				with open(os.path.join(Config.work_directory, "%s_score.txt"%file_prefix), 'w') as bsfo:
+					bsfo.write("%.5f"%(self._best_score))
 
 
 		self._iterational_result_files.append(result_align_path)
@@ -314,14 +317,12 @@ class CoEstimator(JobBase):
 		alignMergeTree = AlignMergeTree(phy_tree, alignment, work_dir, self._aligner, self._merger, self._tree_estimator, **kwargs)
 		_LOG.debug("End split.")
 
-		_merge_jobs = []
 		_LOG.debug("Start merge...")
 		while _MERGE_NODES:
 			for node in _MERGE_NODES:
 				job = node._create_merge_job()
 				if job:
 					jobQueue.put(job, node._num_taxa)
-					_merge_jobs.append(job)
 					_MERGE_NODES.remove(node)
 					if not _MERGE_NODES:#return the root job
 						return job
@@ -492,7 +493,7 @@ class AlignMergeTree(object):
                 t1 = None
                 t2 = None
 
-                #When subalig job needs iteration, its result is a tuple
+                #When subalign job needs iteration, its result is a tuple
                 if isinstance(result1, tuple):
                         a1, t1 = result1[:2]
 			t1 = reroot_at_midpoint(t1)

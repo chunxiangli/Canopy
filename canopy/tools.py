@@ -49,7 +49,8 @@ def format_alignment_result_in_directory(directory, format="phylip", datatype="D
 			tree_file = f[:-4] + ".dnd"	
 			if os.path.exists(tree_file):
 				phy_tree = PhylogeneticTree.read_from_path(tree_file)
-				open(result_file, 'a').write("begin trees;\ntree PRANK = %s\nend;"%phy_tree.as_newick_string())
+				with open(result_file, 'a') as rfo:
+						rfo.write("begin trees;\ntree PRANK = %s\nend;"%phy_tree.as_newick_string())
 
 	if format == "phylip" and name_map.keys() != name_map.values():
 		with open(os.path.join(directory, "name_map.txt"), "w") as name_map_file:
@@ -227,6 +228,7 @@ class Alignment(dict, object):
 		if len(self) and self.datatype == "dna":
 			self.set_dna_freqs()
 
+		file_obj.close()
 		return name_map
 
 	def write_to_path(self, filename, file_format="fasta", name_suffix="", suppress_ancester=False, name_map=None):

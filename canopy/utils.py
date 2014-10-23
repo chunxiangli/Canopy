@@ -49,7 +49,8 @@ def read_internal_alignment(result_file, schema="fasta", datatype=None, del_dirs
 
 	if len(aligned) >= 1:
 		#keep the intermediat file when error happend
-		file_manager.remove_dirs(del_dirs)
+		if len(del_dirs):
+			file_manager.remove_dirs(del_dirs)
 		return aligned
 	else:
 		raise ValueError("Program Failed:The alignment file %s is empty."%result_file)
