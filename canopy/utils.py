@@ -842,14 +842,8 @@ class Raxml(TreeEstimator):
 		if num_cpus > 1:
 			old_cmd = self.cmd
 			command.extend(["-T", str(num_cpus)])
-			#TODO:need check windows multithread version
-			if "Windows" == platform.system():
-				c = self.cmd.split('.')
-				c[-2] += 'p'
-				self.cmd = '.'.join(c)
-			else:
-				if not self.cmd.endswith("p"):
-					self.cmd += "p"
+			if not self.cmd.endswith("p"):
+				self.cmd += "p"
 
 			res, msg = self.check_executable()
 			if res:

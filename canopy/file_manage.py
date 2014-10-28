@@ -88,7 +88,7 @@ class TempFileManager(object):
 	def _is_already_created(self, real_path):
 		self._directories_created_lock.acquire()
 		b = real_path in self._directories_created
-		slef._directories_created_loc.release()
+		self._directories_created_loc.release()
 		return b
 
 	def create_top_level_temp(self, parent, temp_name="temp"):

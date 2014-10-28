@@ -186,7 +186,7 @@ class CoEstimator(JobBase):
 		_LOG.debug("Start get align result...")
 		self._create_align_job_for_single_data(self._alignment, phy_tree, **kwargs)
 
-		_LOG.debug("Start get align result...")
+		_LOG.debug("Start update align result...")
 
 		self._alignment.update(self._job.get_result())	
 
