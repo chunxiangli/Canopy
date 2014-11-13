@@ -183,11 +183,10 @@ class CoEstimator(JobBase):
         		phy_tree.reroot_at_midpoint(update_splits=True)
         	phy_tree.resolve_polytomies()
 
-		_LOG.debug("Start get align result...")
+		_LOG.debug("Start creating align jobs...")
 		self._create_align_job_for_single_data(self._alignment, phy_tree, **kwargs)
 
 		_LOG.debug("Start update align result...")
-
 		self._alignment.update(self._job.get_result())	
 
 		#store iterational align results
@@ -318,14 +317,18 @@ class CoEstimator(JobBase):
 		_LOG.debug("End split.")
 
 		_LOG.debug("Start merge...")
+		delete_nodes = []
 		while _MERGE_NODES:
 			for node in _MERGE_NODES:
-				job = node._create_merge_job()
-				if job:
-					jobQueue.put(job, node._num_taxa)
-					_MERGE_NODES.remove(node)
-					if not _MERGE_NODES:#return the root job
-						return job
+				if node not in delete_nodes:
+					job = node._create_merge_job()
+					if job:
+						#delete_nodes.append(node)
+						jobQueue.put(job, node._num_taxa)
+						_MERGE_NODES.remove(node)
+						if not _MERGE_NODES:#return the root job
+						#if len(delete_nodes) == len(_MERGE_NODES):
+							return job
 		_LOG.debug("End merge...")
 
 	def _store_iterational_tree_result(self, new_score):

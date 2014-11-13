@@ -848,8 +848,7 @@ class Raxml(TreeEstimator):
 			res, msg = self.check_executable()
 			if res:
 				command[0] = self.cmd
-			else:
-				self.cmd = old_cmd
+			self.cmd = old_cmd
 
 		
 		del_dirs = []
