@@ -89,18 +89,13 @@ def initial_configuration():
 	check_prank_option()
 
 def check_prank_option():
-	show_options = ["-showevent", "-showanc", "-showtree", "-showxml", "-showall"]
-	format_prefix = "-f="
-
 	if "prank" in Config.user_config:
-		args = [ option for option in Config.user_config["prank"].get("prank.args","").split() if option not in show_options and not option.startswith(format_prefix)]
+                prank_args = Config.user_config["prank"]["prank.args"]
+                _LOG.debug("filter prank args:%s"%prank_args)
+                if not "-showtree" in prank_args:
+                        Config.user_config["prank"]["prank.args"] = prank_args + " -showtree"
 
-		_LOG.debug("filter prank args:%s"%args)
-
-		args.append("-showtree")
-		Config.user_config["prank"]["prank.args"] = " ".join(args)
-
-		_LOG.debug("prank args:%s"%Config.user_config["prank"]["prank.args"])
+                _LOG.debug("prank args:%s"%Config.user_config["prank"]["prank.args"])
 
 	if Config.main.get("aligner", "prank") == "prank" or Config.main.get("merger", "prank") == "prank":
 		Config.main["output_options"] = []

@@ -36,5 +36,5 @@ if __name__ == "__main__":
 	userid = argv[1]
 	filename = argv[2]
 	name = argv[3]
-	url = "http://wasabi2.biocenter.helsinki.fi:8000"
+	url = "http://wasabiapp.org:8000" 
 	wasabi(filename, name, url, userid)
