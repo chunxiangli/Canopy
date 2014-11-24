@@ -6,7 +6,7 @@ from canopy.job import jobQueue, JobBase
 from canopy.tree import PhylogeneticTree, write_tree_to_file, reroot_at_midpoint, robinson_foulds_distance, symmetric_difference
 from canopy.logger import get_logger, MESSENGER
 from canopy.config import Config
-from canopy.tools import MultiAlignments, Alignment, alignment_accuracy
+from canopy.tools import MultiAlignments, Alignment
 from canopy.file_manage import copy_files, remove_files
 from canopy.utils import translate_data, generate_prank_output
 
@@ -310,25 +310,21 @@ class CoEstimator(JobBase):
 
 	def _divide_and_merge(self, alignment, phy_tree, **kwargs):
                 work_dir = kwargs.get("tmp_dir", os.curdir)
+
 		#generate the AlignMergeTree
-	
 		_LOG.debug("Start split...")
 		alignMergeTree = AlignMergeTree(phy_tree, alignment, work_dir, self._aligner, self._merger, self._tree_estimator, **kwargs)
 		_LOG.debug("End split.")
 
 		_LOG.debug("Start merge...")
-		delete_nodes = []
 		while _MERGE_NODES:
 			for node in _MERGE_NODES:
-				if node not in delete_nodes:
-					job = node._create_merge_job()
-					if job:
-						#delete_nodes.append(node)
-						jobQueue.put(job, node._num_taxa)
-						_MERGE_NODES.remove(node)
-						if not _MERGE_NODES:#return the root job
-						#if len(delete_nodes) == len(_MERGE_NODES):
-							return job
+				job = node._create_merge_job()
+				if job:
+					jobQueue.put(job, node._num_taxa)
+					_MERGE_NODES.remove(node)
+					if not _MERGE_NODES:#return the root job
+						return job
 		_LOG.debug("End merge...")
 
 	def _store_iterational_tree_result(self, new_score):

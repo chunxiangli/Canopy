@@ -1,4 +1,5 @@
 import os, platform
+from canopy import package_name, bin_path, global_path, local_path
 
 DEBUG = False
 # global debugging flag
@@ -20,12 +21,6 @@ def get_number_of_cpus():
 	except (ImportError, NotImplementedError):
 		pass
 
-	#windows
-	try:
-		return int(os.environ("NUMBER_OF_PROCESSORS"))
-	except (KeyError, ValueError):
-		pass
-	
 	#linux
 	try:
 		with open("/proc/cpuinfo", 'r') as f:
@@ -36,10 +31,11 @@ def get_number_of_cpus():
 	raise Exception("Can't read the number of processors!")
 
 def deploy_tools():
-	if platform.system() == "Darwin":
-		return os.path.realpath("canopy/mac_bin/")
-	elif platform.system() == "Linux":
-        	return os.path.realpath("canopy/bin/")
+	elocal_path = os.path.expanduser(local_path)
+	if os.path.isfile(global_path) and os.access(global_path, os.X_OK):
+		return global_path + bin_path
+	elif os.path.isfile(elocal_path) and os.access(elocal_path, os.X_OK):
+		return elocal_path + bin_path
 
 class Config(object):
 	sub_num = 0
@@ -228,6 +224,7 @@ class ConfigAndOptionParser(dict, object):
 
         def set_default_path(self, sections):
                 bin_dir = deploy_tools()
+		print bin_dir
                 for s in sections:
                         if s != 'main':
                                 self[s] = {'%s.path'%s: os.path.join(bin_dir, s)}

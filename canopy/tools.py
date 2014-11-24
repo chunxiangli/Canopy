@@ -58,14 +58,6 @@ def format_alignment_result_in_directory(directory, format="phylip", datatype="D
 
 	remove_files(target_files)
 	
-def alignment_accuracy(align_file1, align_file2):
-	res = commands.getoutput("metal %s %s"%(align_file1, align_file2))
-	return float(res.split("=")[1])
-
-def alignment_accuracy_fastsp(align_file1, align_file2):
-        res = commands.getoutput("java -jar ../bin/FastSP_1.3.jar -r %s -e %s"%(align_file1, align_file2))
-        return float(res.split("\n")[-5].split()[1])
-
 def name_filter_and_encode(name, name_array, name_map):
 	#filter characters that crash phylogenetic tree file
 	name = "".join(_ILLEGAL_TREE_CHARACTER.split(name))

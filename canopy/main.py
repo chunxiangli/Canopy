@@ -6,7 +6,7 @@ if sys.version_info < (2,7) :
 import os, time, random, time, shutil
 from canopy.config import Config, ConfigAndOptionParser, get_number_of_cpus
 from canopy.logger import MESSENGER, get_logger
-from canopy.tools import Alignment, MultiAlignments, format_alignment_result_in_directory, alignment_accuracy
+from canopy.tools import Alignment, MultiAlignments, format_alignment_result_in_directory
 from canopy.utils import ALIGNER_CLASS, MERGER_CLASS, TREE_ESTIMATOR_CLASS, TRANSLATOR_CLASS, translate_data, write_xml
 from canopy.job import jobQueue, mainWorker
 from canopy.file_manage import TempFileManager, makeArchive, remove_files_from_dir, remove_files
