@@ -21,6 +21,12 @@ def get_number_of_cpus():
 	except (ImportError, NotImplementedError):
 		pass
 
+	#windows
+	try:
+		return int(os.environ("NUMBER_OF_PROCESSORS"))
+	except (KeyError, ValueError):
+		pass
+	
 	#linux
 	try:
 		with open("/proc/cpuinfo", 'r') as f:
@@ -32,10 +38,11 @@ def get_number_of_cpus():
 
 def deploy_tools():
 	elocal_path = os.path.expanduser(local_path)
-	if os.path.isfile(global_path) and os.access(global_path, os.X_OK):
-		return global_path + bin_path
-	elif os.path.isfile(elocal_path) and os.access(elocal_path, os.X_OK):
-		return elocal_path + bin_path
+        if os.path.isfile(global_path) and os.access(global_path, os.X_OK):
+                return global_path + bin_path
+        elif os.path.isfile(elocal_path) and os.access(elocal_path, os.X_OK):
+                return elocal_path + bin_path
+
 
 class Config(object):
 	sub_num = 0
@@ -136,6 +143,7 @@ class ConfigAndOptionParser(dict, object):
                 g.append(Option('max_time', '--max_time', type='int', group='main', help='The maximum time span for iterations'))
                 g.append(Option('max_prob_size', '--max_prob_size', type='int', group='main', help='The maximum size of subalignment'))
                 g.append(Option('num_cpus', '--num_cpus', type='int', group='main', help='The maximum number of cpus'))
+                g.append(Option('replicate_num', '--replicate_num', type='int', group='main', help='The number of alternative subalignments'))
                 g.append(Option('need_sub_iter', '--need_sub_iter', group='main', help='Whether need to iterate the subalignment', action='store_true'))
                 g.append(Option('test', '--test', group='main', help='run two-phase alignment and tree inference with PRANK and CLUSTALW separately', action='store_true'))
                 g.append(Option('tree', '--tree', group='main', help='Start tree file path.'))

@@ -25,6 +25,11 @@ def reroot_at_midpoint(tree_str,schema="newick"):
 	phy_tree.resolve_polytomies()
 	return phy_tree.as_newick_string()
 
+def read_treelist(file_name, schema="newick"):
+	from dendropy import TreeList
+	tl = TreeList().read_from_path(file_name, schema)
+	return tl
+
 #TEST:for sate tree
 def scale_tree_branch(tree, format="newick"):
         tree_obj = None

@@ -90,12 +90,12 @@ def initial_configuration():
 
 def check_prank_option():
 	if "prank" in Config.user_config:
-                prank_args = Config.user_config["prank"]["prank.args"]
-                _LOG.debug("filter prank args:%s"%prank_args)
-                if not "-showtree" in prank_args:
-                        Config.user_config["prank"]["prank.args"] = prank_args + " -showtree"
+		prank_args = Config.user_config["prank"]["prank.args"]
+		_LOG.debug("filter prank args:%s"%prank_args)
+		if not "-showtree" in prank_args:
+			Config.user_config["prank"]["prank.args"] = prank_args + " -showtree"	
 
-                _LOG.debug("prank args:%s"%Config.user_config["prank"]["prank.args"])
+		_LOG.debug("prank args:%s"%Config.user_config["prank"]["prank.args"])
 
 	if Config.main.get("aligner", "prank") == "prank" or Config.main.get("merger", "prank") == "prank":
 		Config.main["output_options"] = []
@@ -227,6 +227,9 @@ def create_tools(tmpFileM, need_translator):
 	Config.tree_estimator = initial_tool(tree_estimator_name, 2) 
 	MESSENGER.send_info("Tree estimate tool:%s created successfully."%tree_estimator_name)
 
+	if tree_estimator_name != "raxml":
+		Config.main["replicate_num"] = 0
+
 	if need_translator:
 		translator_name = Config.main.get("translator", "prank")
 		if translator_name == initial_aligner_name:
@@ -340,6 +343,7 @@ def main():
 		mainWorker.start_workers(num_cpus)	
 
 		#initial alignment
+		init_start = time.time()
 		if initial_tree is None:
 			initial_temp = tempFileManager.create_subdir("guide_tree_estimation")
 			MESSENGER.send_info("Initial alignment start...")
@@ -397,6 +401,7 @@ def main():
 				MESSENGER.send_info("Initial alignment done.")
 
 				MESSENGER.send_info("Initial tree estimation start...")
+				tree_start = time.time()
 				job = Config.tree_estimator.create_job(initial_input_seqs,
 							       tmp_dir=initial_temp,
 							       num_cpus=num_cpus,
@@ -410,7 +415,7 @@ def main():
 			
 			saved_initial_result_path = store_result(initial_input_seqs, "initial", initial_tree, initial_score, name_map)
 
-			_LOG.debug("Initial done.")
+			_LOG.debug("Initial done.%.2gs"%(time.time()-init_start))
 
 			if not Config.main.get("test", False):
 				initial_input_seqs = None
@@ -452,7 +457,8 @@ def main():
 						  output_options=Config.main.get("output_options",[]),
 						  id=name,
 						  name_map=name_map,
-						  rooted=Config.main.get("rooted", False))
+						  rooted=Config.main.get("rooted", False),
+						  replicate_num=Config.main.get("replicate_num", 0))
 
 			_RunningJob = coestimator
 			coestimator.start()	
@@ -471,7 +477,7 @@ def main():
 			best_tree = {}
 			best_score = {}
 			for name in input_seqs:
-				saved_result_path[name], best_tree[name], best_score[name] = coestimate_single(input_seqs[name], initial_tree[name], initial_score[name],name)	
+				saved_result_path[name], best_tree[name], best_score[name] = coestimate_single(input_seqs[name], initial_tree[name], initial_score[name], name)	
 			#infer species tree
 			input_seqs.read_from_path(saved_result_path.values(), data_type=input_seqs.datatype)
 			MESSENGER.send_info("Species tree inference start...")
