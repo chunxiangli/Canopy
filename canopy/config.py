@@ -224,7 +224,6 @@ class ConfigAndOptionParser(dict, object):
 
         def set_default_path(self, sections):
                 bin_dir = deploy_tools()
-		print bin_dir
                 for s in sections:
                         if s != 'main':
                                 self[s] = {'%s.path'%s: os.path.join(bin_dir, s)}
