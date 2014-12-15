@@ -14,8 +14,11 @@ class JobQueue(PriorityQueue):
 		prior = 0
 		if self.whole_size is not None:
 			prior = self.whole_size - size
-		_LOG.info("Job added:prior:%d"%prior)
-		PriorityQueue.put(self, (prior, job))
+		_LOG.info("Job added: prior:%d"%prior)
+		if type(job) == list:
+			[PriorityQueue.put(self, (prior, j)) for j in job]
+		else:
+			PriorityQueue.put(self, (prior, job))
 
 jobQueue = JobQueue()
 
@@ -121,9 +124,9 @@ class Job(JobBase):
 				self.check_status()
 
                 		if self._return_code is None:
-                    			_LOG.debug('Waiting for process set up:%s'%self.name)
+                    			_LOG.debug('Waiting for process set up: %s'%self.name)
                     			self._event_list.wait()
-                    			_LOG.debug('Job started:%s'%self.name)
+                    			_LOG.debug('Job started: %s'%self.name)
 					self.check_status()
 
                     		err_msg = []

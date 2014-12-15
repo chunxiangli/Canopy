@@ -31,6 +31,7 @@ def open_file(file_path, mode=None):
 	return open(full_file_path, mode)	
 		
 def copy_files(work_dir, keyword, new_keyword, target_dir=None):
+	_LOG.debug("copy_files:%s %s"%(keyword, new_keyword))
 	assert os.path.exists(work_dir), "The directory %s doesn't exist."%work_dir
 
 	if target_dir is None:
@@ -96,7 +97,7 @@ class TempFileManager(object):
 
 		parent_real = os.path.realpath(parent)
 		if not os.path.exists(parent_real):
-			raise OSError("Parent path %s doesn't exists."%parent_real)
+			raise OSError("Parent path %s doesn't exist."%parent_real)
 
 		if not os.path.isdir(parent_real):
 			raise OSError("Parent path %s is not a directory."%parent_real)
@@ -137,7 +138,7 @@ class TempFileManager(object):
 	def create_temp_subdir(self, parent, dir_name):
 		parent_real = os.path.realpath(parent)
 		if not os.path.exists(parent_real):
-			raise OSError("Parent '%s' for temp_subdir doesn't existed."%parent_real)
+			raise OSError("Parent '%s' for temp_subdir doesn't exist."%parent_real)
 
 		if not os.path.isdir(parent_real):
 			raise OSError("Parent '%s' for temp_subdir is not a directory."%parent_real)

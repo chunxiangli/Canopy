@@ -1,4 +1,4 @@
-import os, time, sys, shutil
+import os, time, sys, shutil, re
 from StringIO import StringIO
 from threading import Event
 from dendropy import Tree
@@ -12,6 +12,9 @@ from canopy.utils import translate_data, generate_prank_output
 
 _LOG = get_logger(__name__)
 _DEFAULT_MAX_ITER = 5
+_DEFAULT_BOOTSTRAP_REPLICATE_NUM = 100
+_DEFAULT_SUPPORT_THRESHOLD = 100
+_length_pattern = re.compile(r':[0-9]+\.[0-9]+')
 
 class CoEstimator(JobBase):
 	def __init__(self, aligner, merger, tree_estimator, alignment, tree, **kwargs):
@@ -33,6 +36,7 @@ class CoEstimator(JobBase):
 		self._old_tree = None
 		self._event_list = Event()
 		self._job = None
+		self._tree_replicates = None
 		self._iterational_result_files = []
 
 	def _keep_iterating(self):	
@@ -72,9 +76,6 @@ class CoEstimator(JobBase):
 
 		k = dict(self._kwargs)
 		k["score"] = None
-		#the number of threads for sub-iteration
-		if self._num_cpus > 1:
-			k["num_cpus"] = 1
 
 		try:
 			while self._keep_iterating():
@@ -83,6 +84,8 @@ class CoEstimator(JobBase):
 				k["old_tree"] = self._old_tree
 
 				MESSENGER.send_info("Iteration %d: align start..."%(self._cur_iter))
+				if not self._subiter:
+					self._generate_random_tree(cur_iter_work_tmp_dir)
 				self.align(**k)
 
 				MESSENGER.send_info("Iteration %d: align done."%self._cur_iter)
@@ -90,12 +93,13 @@ class CoEstimator(JobBase):
 				#estimate new tree and check whether got improved
    				new_score = None
                                 if self._num_taxa > 3:
+					tree_start = time.time()
                                         MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
                                         new_score = self._update_tree(cur_iter_work_tmp_dir)
-                                        MESSENGER.send_info("Iteration %d: tree estimation done."%(self._cur_iter))
+                                        MESSENGER.send_info("Iteration %d: tree estimation done.%.2gs"%(self._cur_iter, time.time()-tree_start))
                                         if not self._subiter:
                                                 self._store_iterational_tree_result(new_score)
-
+					self._old_tree = self._tree
                                         self._tree = self._new_tree
                                 else:   
                                         _LOG.info("Can't use %s. The alignment size is smaller than 4."%self._tree_estimator.name)
@@ -121,10 +125,71 @@ class CoEstimator(JobBase):
 				raise RuntimeError("Unexpected error:%s.Type:%s, FileName:%s,Line:%d"%(str(e), exc_type, fname, exc_tb.tb_lineno))
 		finally:
 			self._event_list.set()
+	def score_improved(self, new_score):
+		if self._tree_estimator.name == "pranktree":
+			if self._best_score is None:
+				self._best_score = self._prank_score
+				return True
+			elif self._prank_score < self._best_score:
+				self._best_score = self._prank_score
+				return True
+		elif self._best_score is None or new_score > self._best_score:
+			self._best_score = new_score
+			return True
+		return False
+
 
 	def _update_tree(self, work_directory):
-		new_concatenated_alignment = self._alignment
-		new_alignment_num_taxa = self._alignment.get_num_taxa()
+		new_score = None
+		if type(self._job) == list:
+			align_jobs = self._job
+			self._job = None
+			results = None
+			result_wait = True
+			best_index = None
+			best_tree = None
+			finished_index = []
+			while result_wait:
+				results = [ job.get_result() for job in align_jobs]
+				result_wait = False
+				for index, result in enumerate(results):
+					if index not in finished_index:
+						if result is not None:
+							tmp_dir = self._file_manager.create_temp_subdir(parent=work_directory, dir_name=str(index))
+							score, new_tree = self._estimate_new_tree(result, tmp_dir)
+							finished_index.append(index)
+							if new_score is None or score > new_score:
+								new_score = score
+								best_tree = new_tree
+								best_index = index
+						else:
+							result_wait = True
+			print "update_tree best_index", best_index
+			self._alignment.update(results[best_index])
+			self._store_iterational_align_result(align_jobs[best_index])
+			align_jobs = None
+			self._tree = self._tree_replicates[best_index]
+			self._new_tree = best_tree 
+			
+		else:
+			_LOG.debug("update without sampling")
+			self._alignment.update(self._job.get_result())	
+			self._store_iterational_align_result()
+			new_store, self._new_tree = self._estimate_new_tree(self._alignment, work_directory)
+
+
+		_LOG.debug("Tree estimation done.")
+		
+		if self.score_improved(new_score):
+			MESSENGER.send_info("Tree improved at iteration %d."%self._cur_iter)
+			self._best_tree = self._new_tree
+			self._best_iter = self._cur_iter
+		
+                return new_score
+
+	def _estimate_new_tree(self, alignment, work_directory):
+		new_alignment = alignment
+		new_alignment_num_taxa = alignment.get_num_taxa()
 
 		assert new_alignment_num_taxa == self._num_taxa, "The number of taxa of new alignment not equals the original number."
 		
@@ -133,48 +198,24 @@ class CoEstimator(JobBase):
 		if self._alignment.align_datatype == "CODON":
 			_LOG.debug("Codon alignment need translation for tree estimation...")
 			temp_result_file = "%s/iteration%d_temp_result.fas"%(self._workdir, self._cur_iter)
-			new_concatenated_alignment.write_to_path(temp_result_file)
+			new_alignment.write_to_path(temp_result_file)
 
-			new_concatenated_alignment = Alignment()
+			new_alignment = Alignment()
 			translated_path = translate_data(self._translator, temp_result_file, self._workdir)
-			new_concatenated_alignment.read_from_path(translated_path, data_type="PROTEIN")
+			new_alignment.read_from_path(translated_path, data_type="PROTEIN")
 			remove_files([temp_result_file, translated_path])
 			_LOG.debug("translation done.")
 
-		tree_estimator = self._tree_estimator.create_job(new_concatenated_alignment,
-								 num_cpus = self._num_cpus,
-								 tmp_dir=work_directory, 
-								 delete_temps=self._kwargs.get("delete_temps"),
-								 model=self._kwargs.get("model", ""),
-								 id=self.id,
-								 description=self._kwargs.get("description", "whole"))
-		self._job = tree_estimator
-		tree_estimator.start()
-		new_score, self._new_tree = tree_estimator.get_result()
-		new_concatenated_alignment = None
-		self._job = None
+		new_score, new_tree = self._tree_estimator.run(new_alignment,
+							  num_cpus = self._num_cpus,
+							  tmp_dir=work_directory, 
+						          delete_temps=self._kwargs.get("delete_temps"),
+							  model=self._kwargs.get("model", ""),
+							  id=self.id,
+							  description=self._kwargs.get("description", "whole"))
+		new_alignment = None
 
-		_LOG.debug("Tree estimation done.")
-		def score_improved(new_score):
-
-			if self._tree_estimator.name == "pranktree":
-				if self._best_score is None:
-					self._best_score = self._prank_score
-					return True
-				elif self._prank_score < self._best_score:
-					self._best_score = self._prank_score
-					return True
-			elif self._best_score is None or new_score > self._best_score:
-				self._best_score = new_score
-				return True
-			return False
-
-		if score_improved(new_score):
-			MESSENGER.send_info("Tree improved at iteration %d."%self._cur_iter)
-			self._best_tree = self._new_tree
-			self._best_iter = self._cur_iter
-		
-                return new_score
+		return new_score, new_tree
 
 
 	def align(self, **kwargs):
@@ -182,19 +223,12 @@ class CoEstimator(JobBase):
 		if not kwargs.get("rooted", False):
         		phy_tree.reroot_at_midpoint(update_splits=True)
         	phy_tree.resolve_polytomies()
+		self._tree = phy_tree.as_newick_string()
 
-		_LOG.debug("Start creating align jobs...")
+		_LOG.debug("Start create align jobs...")
 		self._create_align_job_for_single_data(self._alignment, phy_tree, **kwargs)
 
-		_LOG.debug("Start update align result...")
-		self._alignment.update(self._job.get_result())	
-
-		#store iterational align results
-		self._store_iterational_align_result()
-		self._job = None
-		self._old_tree = phy_tree.as_newick_string()
-
-		_LOG.debug("Align done.")
+		_LOG.debug("Align jobs created.")
 
 
 	def _create_align_job_for_single_data(self, alignment, phy_tree, **kwargs):
@@ -238,13 +272,14 @@ class CoEstimator(JobBase):
 
                 self._job = job
 
-	def _store_iterational_align_result(self):
+	def _store_iterational_align_result(self, job=None):
 		result_dir = Config.work_directory
 		if self._subiter:
 			result_dir = self._workdir
 
 		output_options = self._kwargs.get("output_options",[])
-		job = self._job
+		if job is None:
+			job = self._job
 		wdir = job.cwd
 
 		file_prefix = "iteration%d"%(self._cur_iter)
@@ -318,14 +353,19 @@ class CoEstimator(JobBase):
 
 		_LOG.debug("Start merge...")
 		while _MERGE_NODES:
-			for node in _MERGE_NODES:
-				job = node._create_merge_job()
-				if job:
-					jobQueue.put(job, node._num_taxa)
-					_MERGE_NODES.remove(node)
-					if not _MERGE_NODES:#return the root job
-						return job
-		_LOG.debug("End merge...")
+			delete_nodes = []	
+			for node in _MERGE_NODES: 
+				if node not in delete_nodes:
+					job = node._create_merge_job()
+					if job:
+						delete_nodes.append(node)
+						if 1 == len(_MERGE_NODES):
+							_MERGE_NODES.remove(node)	
+							self._tree_replicates = alignMergeTree.tree_replicates
+							_LOG.debug("End merge...")
+							return job
+			for node in delete_nodes:
+				_MERGE_NODES.remove(node)	
 
 	def _store_iterational_tree_result(self, new_score):
                 _LOG.info("store_iterational_tree_result")
@@ -379,7 +419,108 @@ class CoEstimator(JobBase):
 			_LOG.debug("Best iter:%d"%self._best_iter)
 		return self._result
 
+	def _generate_random_tree(self, parent_dir):
+		if self._alignment.is_aligned() and self._tree_estimator.name == "raxml":
+			_LOG.debug("Generate random tree start...")
+			tree_model = self._kwargs.get("model", "") 
+			delete_temp = self._kwargs.get("delete_temps")
+			#RAxML generate replicate
+			tree_list = self._tree_estimator.run(self._alignment,
+							     num_cpus=self._num_cpus,
+						             tmp_dir=parent_dir,
+							     delete_temps=delete_temp,
+							     model=tree_model,
+							     id="replicate",
+							     replicate_num=_DEFAULT_BOOTSTRAP_REPLICATE_NUM,
+							     description="replicate")
+			_LOG.debug("Generate replicate done.")
+			#RAxML bootstrap
+			bootstrap_tree = self._tree_estimator.run(self._alignment,
+								 self._tree,
+								 result_suffix="boots",
+							         num_cpus=self._num_cpus,
+							         tmp_dir=parent_dir,
+								 delete_temps=delete_temp,
+								 model=tree_model,
+								 id="bootstrap",
+								 replicate_trees=tree_list,
+								 description="bootstrap")
+			_LOG.debug("Generate bootstrap done..")
+			#The above replication and bootstrapping can be done in one RAxML call.
+			#In that case the replicates of sub-alignment would cause redundanct bootstrapping.
+			#A very simple experiment shows the one call is more time consuming than the current implementation (weird...).
+			#Therefore, it is better to do them separately after deciding the final new tree.
+
+			#generate backbone tree
+			tree_str = _length_pattern.sub('', bootstrap_tree)
+        		str_list = list(tree_str)
+        		len_str = len(tree_str)
+        		index = 0
+
+        		rb_array = []
+        		while index < len_str:
+				cha = str_list[index]
+				if cha == '(':
+					index = right_bracket(rb_array, index)
+				elif cha == ')':
+					index = left_bracket(str_list, index, rb_array, _DEFAULT_SUPPORT_THRESHOLD)
+				else:   
+					index += 1
+			backbone_tree = ''.join(str_list)
+			_LOG.debug("Generate backbone tree done.")
+			#RAxML use backbone tree to generate multiple trees and sample one tree
+			self._tree = self._tree_estimator.run(self._alignment,
+							     num_cpus=self._num_cpus,
+							     tmp_dir=parent_dir,
+							     delete_temps=delete_temp,
+							     model=tree_model,
+                                                             id="sample",
+							     backbone=backbone_tree,
+                                                             description="sample")
+			_LOG.debug("Generate random tree done.")
+
+def right_bracket(rb_array, position):
+        rb_array.append(position)
+        return (position + 1)
+
+def left_bracket(str_list, position, rb_array, support_thresh=_DEFAULT_SUPPORT_THRESHOLD):
+        index = position+1
+        character = str_list[index]
+        support = ''
+        digits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+        if character in digits:
+                while character in digits:
+                        support += character
+                        index += 1
+                        character = str_list[index]
+
+                if int(support) < support_thresh:
+                        str_list[rb_array[-1]] = ''
+                        str_list[position] = ''
+
+                del rb_array[-1]
+                for ind in range(position+1, index):
+                        str_list[ind] = ''
+
+        return index
+
+
 _MERGE_NODES = []
+
+def get_result_from_jobs(jobs):
+	result = None
+	if type(jobs) == list:
+		result = [ None for job in jobs]
+		for index, job in enumerate(jobs):
+			if job:
+				job.check_status()	
+				if job.result is not None:
+					result[index] = job.result
+	else:
+		jobs.check_status()
+		result = jobs.result
+	return result
+
 class AlignMergeTree(object):
         def __init__(self, phy_tree, alignment, work_dir, aligner, merger, tree_estimator, **kwargs):
                 self._phy_tree = phy_tree
@@ -395,19 +536,17 @@ class AlignMergeTree(object):
                 self._rChild = None
                 self._lChild = None
                 self._result = None
+		self.tree_replicates = [ None for i in range(kwargs.get("replicate_num", 0))]
                 self._kwargs = kwargs
                 self._work_dir = work_dir
 		self.generate_children()
 
 	def get_result(self):
 		if self._align_job is not None:
-			self._align_job.check_status()
-			self._result = self._align_job.result
+			self._result = get_result_from_jobs(self._align_job)
 		elif self._merge_job is not None: 
-			self._merge_job.check_status()
-			self._result = self._merge_job.result
+			self._result = get_result_from_jobs(self._merge_job)
 		return self._result
-
 
         @property
         def id(self):
@@ -439,16 +578,48 @@ class AlignMergeTree(object):
 			a2 = self._alignment.sub_alignment(t2.leaf_node_names())
 			k["description"] = descrip + '/1'
 			self._lChild = AlignMergeTree(t2, a2, lChild_wdir, self.aligner, self.merger, self.tree_estimator, **k)
+
 			_MERGE_NODES.append(self)
 		else:
 			_LOG.debug("subalign create job")
-			job = self._create_align_job()
-			jobQueue.put(job, self._num_taxa)
+			self._create_align_job()
 
 	def _create_align_job(self):
+		replicate_num = self._kwargs.get("replicate_num", 0)
+		if self._num_taxa > 4 and replicate_num > 1:
+			self._align_job = []
+			self.tree_replicates = self.tree_estimator.run(self._alignment,
+                                                                 num_cpus = self._kwargs.get("num_cpus"),
+                                                                 tmp_dir=self._work_dir,
+                                                                 delete_temps=self._kwargs.get("delete_temps"),
+                                                                 model=self._kwargs.get("model", ""),
+                                                                 id=self.id,
+								 replicate_num=replicate_num,
+                                                                 description=self._kwargs.get("description"))
+			#only the first 3 trees to generate 3 alternative subalignments
+			[ tree.resolve_polytomies() for tree in self.tree_replicates ]
+			self.tree_replicates = [ tree.as_newick_string().strip(":0.0") for tree in self.tree_replicates]
+			for index, treeRep in enumerate(self.tree_replicates):
+				if index < 2:
+					self._align_job.append(self._create_single_align_job(treeRep, index))
+			self._align_job.append(self._create_single_align_job())
+			self.tree_replicates[2] = self._tree
+		else:
+			self._align_job = self._create_single_align_job()
+			self.tree_replicates = None
+
+		jobQueue.put(self._align_job, self._num_taxa)
+
+	def _create_single_align_job(self, tree=None, index=""):
 		file_manager = self._kwargs.get("file_manager")
-                job = None
-                _LOG.info("Subalign job:%s creating..."%self._kwargs.get("description"))
+                guide_tree = self._tree
+		work_dir = self._work_dir
+		if tree:
+			guide_tree = tree
+			work_dir = file_manager.create_temp_subdir(self._work_dir, 'r%s'%index)
+
+		job = None
+                _LOG.info("Subalign job:%s creating...%d %s"%(self._kwargs.get("description"), self._num_taxa, index))
 
                 if self._num_taxa > 3 and self._kwargs.get("need_sub_iter", False):
                         k = dict(self._kwargs)
@@ -456,41 +627,83 @@ class AlignMergeTree(object):
                         del k["max_prob_size"]
 			del k["output_options"]
 			del k["name_map"]
-                        k["tmp_dir"] = self._work_dir
+                        k["tmp_dir"] = work_dir
 			k["rooted"] = True
+			k["num_cpus"] = 1	
 			if "score" in k:
 				del k["score"]
 
-                        job = CoEstimator(self.aligner, self.merger, self.tree_estimator, self._alignment, self._tree, **k)
+                        job = CoEstimator(self.aligner, self.merger, self.tree_estimator, self._alignment, guide_tree, **k)
                 else:
-                        guide_tree = self._tree
 			old_tree = self._kwargs.get("old_tree", None)
                         if self._kwargs.get("without_guide", False):
                                 guide_tree = None
 				old_tree = None
-
+			description = "%s_r%s"%(self._kwargs.get("description"), index)
                         job = self.aligner.create_job(self._alignment,
 			                              guide_tree,
                                                       old_tree=old_tree,
                                                       id=self.id,
-                                                      tmp_dir=self._work_dir,
+                                                      tmp_dir=work_dir,
                                                       delete_temps=self._kwargs.get("delete_temps"),
-                                                      description=self._kwargs.get("description"))
-                self._align_job = job
-               	_LOG.info("Subalign job:%s created..."%self._work_dir)
+                                                      description=description)
 
-                return job
+		_LOG.info("Subalign job:%s created...%d %s"%(self._work_dir, self._num_taxa, index))
+		return job
+
 
         def _create_merge_job(self):
                 result1 = self._rChild.get_result()
                 result2 = self._lChild.get_result()
 
+		is_list1 = type(result1) == list	
+		is_list2 = type(result2) == list
+
+		if is_list1 or is_list2:
+			len_r = 0
+			if is_list1:
+				len_r = len(result1)
+			else:
+				len_r = len(result2)	
+			#TODO:need to test
+			if not self._merge_job:
+				self._merge_job = [None for r in range(len_r)]
+
+			merge_create_finish = True	
+			for index in range(len_r):
+				if not self._merge_job[index]:
+					r1 = result1
+					if is_list1:
+						r1 = result1[index]
+					r2 = result2
+					if is_list2:
+						r2 = result2[index]
+					job = self._create_single_merge_job(r1, r2, index)
+					if job: 
+						jobQueue.put(job, self._num_taxa)	
+						self._merge_job[index] = job
+					else:
+						merge_create_finish = False
+			if merge_create_finish:
+				return self._merge_job
+			return merge_create_finish
+				
+		else:
+			job = self._create_single_merge_job(result1, result2)
+			if job:
+				self._merge_job = job
+				jobQueue.put(job, self._num_taxa)	
+			return job
+
+	def _create_single_merge_job(self, result1, result2, index=""):
 		if result1 is None or result2 is None:
 			return False
+
                 a1 = None
                 a2 = None
                 t1 = None
                 t2 = None
+		work_dir = self._work_dir
 
                 #When subalign job needs iteration, its result is a tuple
                 if isinstance(result1, tuple):
@@ -498,33 +711,46 @@ class AlignMergeTree(object):
 			t1 = reroot_at_midpoint(t1)
                 else:
                         a1 = result1
-                        t1 = self._rChild.tree
-
-                _LOG.debug("%s rchild result:%d"%(self._rChild._kwargs.get("description"), a1.get_num_taxa()))
+			if index != "" and self._rChild.tree_replicates:
+				t1 = self._rChild.tree_replicates[index]
+			else:
+                        	t1 = self._rChild.tree
+                _LOG.debug("%s %s rchild result:%d"%(self._rChild._kwargs.get("description"), index, a1.get_num_taxa()))
 		a1.dna_freqs = self._rChild._alignment.dna_freqs
-                self._rChild = None
 
                 if isinstance(result2, tuple):
                         a2, t2 = result2[:2]
 			t2= reroot_at_midpoint(t2)
                 else:
                         a2 = result2
-                        t2 = self._lChild.tree
-                _LOG.debug("%s lchild result:%d"%(self._lChild._kwargs.get("description"), a2.get_num_taxa()))
+			if index != "" and self._lChild.tree_replicates:
+				t2 = self._lChild.tree_replicates[index]
+			else:
+                        	t2 = self._lChild.tree
+                _LOG.debug("%s %s lchild result:%d"%(self._lChild._kwargs.get("description"), index, a2.get_num_taxa()))
 		a2.dna_freqs = self._lChild._alignment.dna_freqs
-                self._lChild = None
 
 		_LOG.debug("submerge:delete_temps:%s"%self._kwargs.get("delete_temps"))
 		merge_tree = '(t1:{0},t2:{1})'.format(self.merge_dist1, self.merge_dist2)
+
+		#When sample, need to reconstruct the guide tree for the co-alternative sub-alignment
+		description = self._kwargs.get("description")
+		if index != "":
+			self.tree_replicates[index] = '({0}:{1},{2}:{3})'.format(t1, self.merge_dist1, t2, self.merge_dist2)
+			work_dir = self._kwargs.get("file_manager").create_temp_subdir(work_dir, 'm%s'%index)
+			description = "%s_m%s"%(description, index)
+			
+
 		if self._kwargs.get("without_guide", False):
 			t1 = None
 			t2 = None
 			merge_tree = None
 
-		job = self.merger.create_job(a1, a2,
+               	_LOG.info("Merge job creating...%s"%work_dir)
+		return self.merger.create_job(a1, a2,
 					     guide_tree1=t1,
                                              guide_tree2=t2,
-		                             tmp_dir=self._work_dir,
+		                             tmp_dir=work_dir,
                                              id=self.id,
                                              tree=self._tree,
                                              merge_tree=merge_tree,
@@ -532,10 +758,6 @@ class AlignMergeTree(object):
                                              output_options=self._kwargs.get("output_options",[]),
                                              description=self._kwargs.get("description"))
 
-                self._merge_job = job
-
-               	_LOG.info("Merge job created...%s"%self._work_dir)
-                return job
 
         def get_alignment(self, whole_alignment):
                 return whole_alignment.sub_alignment(self._phy_tree.leaf_node_names())

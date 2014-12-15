@@ -55,40 +55,58 @@ def read_internal_alignment(result_file, schema="fasta", datatype=None, del_dirs
 	else:
 		raise ValueError("Program Failed:The alignment file %s is empty."%result_file)
 	
-def read_raxml_results(workdir, del_dirs, file_manager):
-        file_list = os.listdir(workdir)
-        tree_id = None
+def read_raxml_results(workdir, del_dirs, file_manager, result_suffix, rtype="best"):
+	fun_dic ={"best":read_raxml_score_tree,
+		  "replicate":read_raxml_replicate_trees,
+		  "bootstrap":read_raxml_bootstrap_tree,
+		  "random":random_read_raxml_trees}
+	try:
+		return fun_dic[rtype](workdir, result_suffix)
+	finally:
+		if len(del_dirs):
+			file_manager.remove_dirs(del_dirs)
+
+def read_raxml_score_tree(workdir, result_suffix):
 	log_score = None
+	score = None
 	tree_str = ""
-        for f in file_list:
-                if f.startswith("RAxML_log"): 
-                        tree_id = f.split(".")[1]
-                        break
-        raxml_log = os.path.join(workdir, "RAxML_log.%s"%tree_id)
+	raxml_log = "%s/RAxML_log.%s"%(workdir, result_suffix)
 	with open(raxml_log, "rU") as log_file:
         	log_score = filter(lambda x: "Final GAMMA_based Score of best tree" in x, log_file) 
 
-        score = None
         if log_score:
                 score = float(log_score[0].split(" ")[-1])
         else:   
 		with open(raxml_log, "rU") as log_file:
                 	score = float(log_file.readlines()[-1].split()[1])
 
-        raxml_result = os.path.join(workdir, "RAxML_result.%s"%tree_id)
-	with open(raxml_result, "rU") as tree_file:
+	with open("%s/RAxML_result.%s"%(workdir, result_suffix), "rU") as tree_file:
         	tree_str = tree_file.read().strip()
 
-	if len(del_dirs):
-        	file_manager.remove_dirs(del_dirs)
+	return score, tree_str
 
-        return score, tree_str
+def read_raxml_bootstrap_tree(workdir, result_suffix):
+	result_tree_file = "%s/RAxML_bipartitions.%s"%(workdir, result_suffix)
+	with open(result_tree_file, 'rU') as tree_file:
+		return tree_file.read()
+
+def random_read_raxml_trees(workdir, result_suffix):
+	run_index = random.randint(0,9)
+	with open("%s/RAxML_result.%s.RUN.%d"%(workdir, result_suffix, run_index), "rU") as tree_file:
+		return tree_file.read().strip()	
+
+def read_raxml_replicate_trees(workdir, result_suffix):
+	from dendropy import TreeList
+	t = TreeList()
+	t.read_from_path("%s/RAxML_bootstrap.%s"%(workdir, result_suffix), 'newick')
+	return t
+
 
 def read_fasttree_results(result_file, workdir, del_dirs, file_manager):
 	tree_str = ""
 	log_score = None
 	with open(result_file, 'r') as tree_file:
-		tree_str = re.sub("\)[0-9.]*:","):", tree_file.read(-1).strip("\n"))
+		tree_str = re.sub("\)[0-9.]*:", "):", tree_file.read(-1).strip("\n"))
 
 	with open(workdir+"/stderr.txt", 'r') as log_file:
 		log_score = filter(lambda x: "Optimize all lengths:" in x, log_file)
@@ -820,23 +838,43 @@ class Raxml(TreeEstimator):
 
 
 	def create_job(self, alignment, guide_tree=None, result_suffix="default", **kwargs):
+		rtype = "best"
 		wdir, input_file, model = self._preprocess_input(alignment, **kwargs)
 		command = [self.cmd, "-m", model, "-n", result_suffix, "-s", input_file]
+		random_seed = "1111111"
+		if not DEBUG:
+			random_seed = str(random.randint(1, int(time.time())))
 
 		if self.user_config is not None:
 			command.extend(self.user_config)
 
 		if self.user_config is None or "-p" not in self.user_config:
-                        if DEBUG:
-                                command.extend(["-p", "11111111"])
-                        else:
-                                command.extend(["-p", str(random.randint(1, int(time.time())))])
-
+			command.extend(["-p", random_seed])
 
 		if guide_tree is not None:
 			tree_file = os.path.join(os.path.abspath(wdir), "start.tre")
 			write_tree_to_file(guide_tree, tree_file)	
 			command.extend(["-t", tree_file])
+
+		replicate_trees = kwargs.get("replicate_trees")
+		if replicate_trees:
+			replicate_trees_file = os.path.join(wdir, "replicates.tre")
+			replicate_trees.write_to_path(replicate_trees_file, 'newick')
+			command.extend(["-z", replicate_trees_file, "-f", "b"]) 
+			rtype = 'bootstrap'
+
+		replicate_num = kwargs.get("replicate_num", 0)
+		if replicate_num:
+			command.extend(['-x', random_seed, '-#%d'%replicate_num, '-k'])	
+			rtype = 'replicate'
+
+
+		backbone_tree = kwargs.get("backbone")
+		if backbone_tree:
+			backbone_tree_file = os.path.join(wdir, "backbone.tre")
+			write_tree_to_file(backbone_tree, backbone_tree_file)
+			command.extend(['-g', backbone_tree_file, '-#10'])
+			rtype = 'random'
 
 		num_cpus = kwargs.get("num_cpus", 1)
 		if num_cpus > 1:
@@ -847,7 +885,7 @@ class Raxml(TreeEstimator):
 
 			res, msg = self.check_executable()
 			if res:
-				command[0] = self.cmd
+				command[0] += "p"
 			self.cmd = old_cmd
 
 		
@@ -855,7 +893,7 @@ class Raxml(TreeEstimator):
 		if kwargs.get("delete_temps", self.delete_temps):
 			del_dirs = [wdir]		
 
-		postp = lambda: read_raxml_results(wdir, del_dirs, self.file_manager)
+		postp = lambda: read_raxml_results(wdir, del_dirs, self.file_manager, result_suffix, rtype)
 		_LOG.debug("command:%s"%" ".join(command))
 		return Job(command,
 			   post_processor=postp,
@@ -879,13 +917,13 @@ class PhyML(TreeEstimator):
 
                 model = kwargs.get("model", None)
                 if "dna" == alignment.datatype:
-			if model is None or"" ==  model:
+			if model is None or "" ==  model:
                         	model = "HKY85"
                         elif model not in ["HKY85", "JC69", "K80", "F81", "F84", "TN93", "GTR", "custom"]:
                                 raise ValueError("The %s model is not available for PhyML."%model)
                 elif "protein" == alignment.datatype:
                         data_type = "aa"
-			if model is None or"" ==  model:
+			if model is None or "" ==  model:
                         	model = "WAG"
                         elif model not in ["LG", "WAG", "JTT", "MtREV", "Dayhoff", "DCMut", "RtREV", "CpREV", "VT", "Blosum63", "MtMam", "MtArt", "HIVw", "HIVb", "custom"]:
                                 raise ValueError("The %s model is not available for PhyML."%model)
