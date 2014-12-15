@@ -865,7 +865,7 @@ class Raxml(TreeEstimator):
 
 		replicate_num = kwargs.get("replicate_num", 0)
 		if replicate_num:
-			command.extend(['-b', random_seed, '-#%d'%replicate_num, '-k'])	
+			command.extend(['-x', random_seed, '-#%d'%replicate_num, '-k'])	
 			rtype = 'replicate'
 
 
