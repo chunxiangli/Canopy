@@ -264,11 +264,10 @@ class Tool(object):
 		if args is not None and args != '':
 			self.user_config = shlex.split(args)
 
-		res, msg = self.check_executable()
-		#if not os.path.exists(self.cmd):
+		res = self.check_executable()
 		if not res:
             		if self.is_bundled:
-                		err_msg = "The command '%s' does not exist. Please check the installation and try again." % self.cmd
+                		err_msg = "The tool '%s' does not exist. Please check the installation and try again." % self.cmd
             		else:
                 		err_msg = "Executable file %s not found. Please install %s and/or configure its location correctly." % (self.cmd, self.name)
             		raise ValueError(err_msg)
@@ -276,12 +275,12 @@ class Tool(object):
 	def check_executable(self):
 		r, msg = file_checker(self.cmd)
 		if not r:
-			return (r, msg)
+			return r
 		else:
 			if os.access(self.cmd, os.X_OK):
-				return True, self.cmd
+				return True
 			else:
-				return False, self.cmd
+				return False
 
 	def make_workdir(self, dir_name, prefix):
 		assert dir_name is not None, "Must specify tmp_dir for %s."%self.name
@@ -767,18 +766,16 @@ class FastTree(TreeEstimator):
 			command.extend(["-intree", tree_file])
 
 		num_cpus = kwargs.get("num_cpus", 1)
-
 		if num_cpus > 1:
 			old_cmd = self.cmd
 			if not self.cmd.endswith("MP"):
 				self.cmd += "MP"
 
-			res, msg = self.check_executable()
+			res = self.check_executable()
 			if res:
 				command[0] = self.cmd
 				os.putenv("OMP_NUM_THREADS", str(num_cpus))
-			else:
-				self.cmd = old_cmd
+			self.cmd = old_cmd
 
 		result_file = wdir+"/result.tree"
 
@@ -843,13 +840,13 @@ class Raxml(TreeEstimator):
 		num_cpus = kwargs.get("num_cpus", 1)
 		if num_cpus > 1:
 			old_cmd = self.cmd
-			command.extend(["-T", str(num_cpus)])
 			if not self.cmd.endswith("p"):
 				self.cmd += "p"
 
-			res, msg = self.check_executable()
+			res = self.check_executable()
 			if res:
 				command[0] = self.cmd
+			        command.extend(["-T", str(num_cpus)])
 			self.cmd = old_cmd
 
 		
