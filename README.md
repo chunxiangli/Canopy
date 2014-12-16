@@ -1,7 +1,7 @@
 Canopy
 ======
 
-Iterative alignment and phylogeny inference tool with Prank and PAGAN
+Iterative alignment and phylogeny inference tool with PRANK and PAGAN
 
 The tool was developed in Loytynoja's group:http://loytynojalab.biocenter.helsinki.fi.
 
