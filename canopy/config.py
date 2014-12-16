@@ -150,7 +150,7 @@ class ConfigAndOptionParser(dict, object):
                 g.append(Option('tree_str', '--tree_str', group='main', help='Start tree string in newick format'))
                 g.append(Option('score', '--score', type='float', group='main', help='Likelihood score of start tree'))
                 g.append(Option('initial_aligner', '--initial_aligner', group='main', help='The name of initial aligner tool. Currently support mafft, prank, clustalw and pagan. Default:mafft'))
-                g.append(Option('aligner', '--aligner', group='main', help='The name of aligner tool for iteration steps. Currently support mafft, prank, clustalw and pagan. Default:mafft'))
+                g.append(Option('aligner', '--aligner', group='main', help='The name of aligner tool for iteration steps. Currently support mafft, prank, clustalw and pagan. Default:prank'))
                 g.append(Option('merger', '--merger', group='main', help='The name of merge tool for iteration steps. Currently support muscle and prank. Default:prank'))
                 g.append(Option('tree_estimator', '--tree_estimator', group='main', help='The name of tree estimate tool. Currently support raxml, fasttree and phyml. Default:raxml'))
 		g.append(Option('config_export_path', '--config_export_path', group='main', help="the file for saving user's configuration"))
@@ -166,6 +166,7 @@ class ConfigAndOptionParser(dict, object):
                 g = []
                 g.append(Option('mafft.path', '--mafft.path', group='mafft', help='mafft exectutable path'))
                 g.append(Option('mafft.args', '--mafft.args', group='mafft', help='Extra arguments'))
+		g.append(Option('nolocal', '--nolocal', group='mafft', help='disable the call of L-INS-i when the number of sequences is less than 200 and the length not exceed 2000.', action='store_true'))
                 self._sections['mafft'] = g
 		g = []
                 g.append(Option('clustalw.path', '--clustalw.path', group='clustalw', help='clustalw exectutable path'))
