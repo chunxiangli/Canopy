@@ -89,15 +89,14 @@ def initial_configuration():
 	check_prank_option()
 
 def check_prank_option():
-	if "prank" in Config.user_config:
-                prank_args = Config.user_config["prank"]["prank.args"]
-                _LOG.debug("filter prank args:%s"%prank_args)
-                if not "-showtree" in prank_args:
-                        Config.user_config["prank"]["prank.args"] = prank_args + " -showtree"
-
-                _LOG.debug("prank args:%s"%Config.user_config["prank"]["prank.args"])
-
 	if Config.main.get("aligner", "prank") == "prank" or Config.main.get("merger", "prank") == "prank":
+		prank_args = Config.user_config["prank"].get("prank.args", "")
+		_LOG.debug("filter prank args:%s"%prank_args)
+		if not "-showtree" in prank_args:
+			Config.user_config["prank"]["prank.args"] = prank_args + " -showtree"
+
+		_LOG.debug("prank args:%s"%Config.user_config["prank"]["prank.args"])
+
 		Config.main["output_options"] = []
 
 		if Config.main.get("showall", False):
@@ -199,19 +198,23 @@ def create_tools(tmpFileM, need_translator):
 		tool_args = args
 		option_name = "%s.args"%(tool_class.name)
 
-		if tool_class.name == "prank" and Config.main.get("align_datatype", None) == "CODON":
+		if tool_class.name == 'prank' and Config.main.get("align_datatype", None) == 'CODON':
 			tool_args += " -codon "
 
 		if option_name in Config.user_config[tool_class.name]:
 			tool_args += Config.user_config[tool_class.name][option_name]
-		return tool_class(tmpFileM, cmd=Config.user_config[tool_class.name]["%s.path"%(tool_class.name)], args=tool_args) 
+
+		if tool_class.name == 'mafft' and Config.user_config['mafft'].get('nolocal', False):
+			return tool_class(tmpFileM, cmd=Config.user_config[tool_class.name]["%s.path"%(tool_class.name)], args=tool_args, nolocal=True) 
+		else:
+			return tool_class(tmpFileM, cmd=Config.user_config[tool_class.name]["%s.path"%(tool_class.name)], args=tool_args) 
 	
-	initial_aligner_name = Config.main.get("initial_aligner", "mafft")
+	initial_aligner_name = Config.main.get("initial_aligner", 'mafft')
 	Config.initial_aligner = initial_tool(initial_aligner_name, 0)
 
 	MESSENGER.send_info("Initial aligner:%s created successfully."%initial_aligner_name)
 
-	aligner_name = Config.main.get("aligner", "prank")
+	aligner_name = Config.main.get("aligner", 'prank')
 	if initial_aligner_name == aligner_name:
 		Config.aligner = Config.initial_aligner
 	
@@ -219,16 +222,16 @@ def create_tools(tmpFileM, need_translator):
 		Config.aligner = initial_tool(aligner_name, 0) 
 	MESSENGER.send_info("Iterative aligner:%s created successfully."%aligner_name)
 
-	merger_name = Config.main.get("merger","prank")
+	merger_name = Config.main.get("merger",'prank')
 	Config.merger = initial_tool(merger_name, 1)
 	MESSENGER.send_info("Merge tool:%s created successfully."%merger_name)
 
-	tree_estimator_name = Config.main.get("tree_estimator", "raxml")
+	tree_estimator_name = Config.main.get("tree_estimator", 'raxml')
 	Config.tree_estimator = initial_tool(tree_estimator_name, 2) 
 	MESSENGER.send_info("Tree estimate tool:%s created successfully."%tree_estimator_name)
 
 	if need_translator:
-		translator_name = Config.main.get("translator", "prank")
+		translator_name = Config.main.get("translator", 'prank')
 		if translator_name == initial_aligner_name:
 			Config.translator = Config.initial_aligner
 		elif translator_name == aligner_name:
@@ -244,8 +247,8 @@ def read_input_files(align_datatype):
 
 	try:
 		
-		data_datatype = Config.main.get("datatype", "DNA")
-		input_format = Config.main.get("format", "fasta")
+		data_datatype = Config.main.get("datatype", 'DNA')
+		input_format = Config.main.get("format", 'fasta')
 
 		
 		#reading sequences

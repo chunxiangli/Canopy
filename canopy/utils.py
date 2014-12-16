@@ -471,9 +471,11 @@ class Prank(Aligner):
 class Mafft(Aligner):
 	is_bundled = True
 	name = "mafft"
+	accurate_mode = True
 
 	def __init__(self, file_manager, **kwargs):
 		Aligner.__init__(self, file_manager, **kwargs)
+		self.accurate_mode = (not kwargs.get('nolocal', False))
 
 	def create_job(self, alignment, guide_tree=None, **kwargs):
 		unaligned_seqs = alignment.unaligned()
@@ -485,7 +487,7 @@ class Mafft(Aligner):
 		wdir, ifn, ofn = self._preprocess_input(alignment, **kwargs)
 		command = [self.cmd]
 
-		if unaligned_seqs.get_num_taxa() < 200 and unaligned_seqs.max_sequence_length() < 2000:
+		if self.accurate_mode and unaligned_seqs.get_num_taxa() < 200 and unaligned_seqs.max_sequence_length() < 2000:
 			command.extend(["--localpair", "--maxiterate", "1000"])
 
 		command.extend(["--quiet", ifn])

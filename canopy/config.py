@@ -158,6 +158,7 @@ class ConfigAndOptionParser(dict, object):
                 g = []
                 g.append(Option('mafft.path', '--mafft.path', group='mafft', help='mafft exectutable path'))
                 g.append(Option('mafft.args', '--mafft.args', group='mafft', help='Extra arguments'))
+		g.append(Option('nolocal', '--nolocal', group='mafft', help='disable the call of L-INS-i when the number of sequences is less than 200 and the length not exceed 2000.', action='store_true'))
                 self._sections['mafft'] = g
 		g = []
                 g.append(Option('clustalw.path', '--clustalw.path', group='clustalw', help='clustalw exectutable path'))
