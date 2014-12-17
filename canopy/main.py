@@ -20,9 +20,13 @@ def initial_configuration():
 	user_config = ConfigAndOptionParser()
 	user_config.read_from_commandline()
 
-	if not user_config.get("main", False):
+        if not user_config.get("main", False): 
 		MESSENGER.send_error('There is no parameter. For the usage of the tool, please run "canopy --help" or "canopy -h"!!!')
 		sys.exit()
+
+        if not user_config["main"].get("seq", False):
+		MESSENGER.send_error("There is no sequence file provided. For the usage of the tool,please run 'canopy --help' or 'canopy -h'!!!")
+                sys.exit()
 
 	dir_name = user_config["main"].get("work_directory", os.curdir)
 	seq_path = os.path.realpath(os.path.expanduser(user_config["main"]["seq"]))
