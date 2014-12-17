@@ -1,14 +1,15 @@
 #! /bin/sh
 
-
 er=0;
 myself=`dirname "$0"`/`basename "$0"`; export myself
-version="v6.935b (2012/08/21)"; export version
+version="v7.215 (2014/12/17)"; export version
 LANG=C; export LANG
 os=`uname`
 progname=`basename "$0"`
 if [ `echo $os | grep -i cygwin` ]; then
 	os="cygwin"
+elif [ `echo $os | grep -i mingw` ]; then
+	os="mingw"
 elif [ `echo $os | grep -i darwin` ]; then
 	os="darwin"
 elif [ `echo $os | grep -i sunos` ]; then
@@ -23,7 +24,6 @@ export os
 if [ "$MAFFT_BINARIES" ]; then
 	prefix="$MAFFT_BINARIES"
 else
-	#prefix=/v/users/czli/tools/mafft/libexec/mafft
 	prefix=`dirname "$0"`/lib
 fi
 export prefix
@@ -108,7 +108,7 @@ if [ $progname = "xinsi" -o $progname = "mafft-xinsi" ]; then
 	defaultaof="0.0"
 	defaultsbstmodel=" -b 62 "
 	defaultkappa=" "
-	defaultfmodel=" -a "
+	defaultfmodel="    "  # 2013/06/18
 elif [ $progname = "qinsi" -o $progname = "mafft-qinsi" ]; then
 	defaultfft=1
 	defaultcycle=1
@@ -125,7 +125,7 @@ elif [ $progname = "qinsi" -o $progname = "mafft-qinsi" ]; then
 	defaultaof="0.0"
 	defaultsbstmodel=" -b 62 "
 	defaultkappa=" "
-	defaultfmodel=" -a "
+	defaultfmodel="    "  # 2013/06/18
 elif [ $progname = "linsi" -o $progname = "mafft-linsi" ]; then
 	defaultfft=0
 	defaultcycle=1
@@ -161,13 +161,14 @@ elif [ $progname = "nwnsi" -o $progname = "mafft-nwnsi" ]; then
 	defaultdistance="ktuples"
 fi
 outputfile=""
-namelength=15
+namelength=-1
 anysymbol=0
 parallelizationstrategy="BAATARI2"
 kappa=$defaultkappa
 sbstmodel=$defaultsbstmodel
 fmodel=$defaultfmodel
 gop=$defaultgop
+gopdist=$defaultgop
 aof=$defaultaof
 cycle=$defaultcycle
 iterate=$defaultiterate
@@ -202,7 +203,7 @@ debug=0
 sw=0
 algopt=$defaultalgopt
 algoptit=$defaultalgoptit
-algspecified=0
+#algspecified=0
 pairspecified=0
 scorecalcopt=" "
 coreout=0
@@ -210,6 +211,7 @@ corethr="0.5"
 corewin="100"
 coreext=" "
 outputformat="pir"
+f2clext="-N"
 outorder="input"
 seed="x"
 seedtable="x"
@@ -225,18 +227,28 @@ topin=0
 treeinopt="  "
 seedfiles="/dev/null"
 seedtablefile="/dev/null"
+pdblist="/dev/null"
+ownlist="/dev/null"
+strdir="$PWD"
 aamatrix="/dev/null"
 treeinfile="/dev/null"
 rnascoremtx=" "
 laraparams="/dev/null"
 foldalignopt=" "
-treealg=" -X "
+treealg=" -X 0.1 "
 scoreoutarg=" "
 numthreads=0
+numthreadsit=-1
 randomseed=0
 addfile="/dev/null"
 addarg0=" "
+addarg=" "
+addsinglearg=" "
 fragment=0
+legacygapopt=" "
+mergetable="/dev/null"
+mergearg=" "
+seedoffset=0
 outnum=" "
 last_e=5000
 last_m=3
@@ -244,7 +256,30 @@ last_subopt=" "
 last_once=" "
 adjustdirection=0
 tuplesize=6
+termgapopt=" -O "
+#termgapopt=" " # gap/gap ga kakenai node
+similarityoffset="0.0"
+unalignlevel="0.0"
+unalignspecified=0
+spfactor="100.0"
+shiftpenaltyspecified=0
+opdistspecified=0
+allowshift=0
+enrich=0
+enrichseq=0
+enrichstr=0
+seektarget=""
+fixthreshold="0.0"
+bunkatsuopt=" "
+npickup=0
 if [ $# -gt 0 ]; then
+	if [ "$1" = "--version" ]; then
+		echo "$version" 1>&2
+		exit 0;
+	elif [ "$1" = "--help" -o "$1" = "--info" ]; then 
+		shift
+		er=1;
+	fi
 	while [ $# -gt 1 ];
 	do
 		if [ "$1" = "--auto" ]; then 
@@ -265,14 +300,20 @@ if [ $# -gt 0 ]; then
 			partorderopt=" -x "
 		elif [ "$1" = "--unweight" ]; then 
 			weightopt=" -u "
+		elif [ "$1" = "--termgappenalty" ]; then 
+			termgapopt=" "
 		elif [ "$1" = "--alga" ]; then 
 			algopt=" "
 			algoptit=" "
-			algspecified=1
+#			algspecified=1
 		elif [ "$1" = "--algq" ]; then 
 			algopt=" -Q "
 			algoptit=" "
-			algspecified=1
+			echo "" 1>&2
+			echo "--algq is no longer supported!" 1>&2
+			echo "" 1>&2
+			exit 1;
+#			algspecified=1
 		elif [ "$1" = "--namelength" ]; then 
 			shift   
 			namelength=`expr "$1" - 0`
@@ -316,9 +357,15 @@ if [ $# -gt 0 ]; then
 			pairspecified=1
 			sw=0
 		elif [ "$1" = "--averagelinkage" ]; then
-			treealg=" -E "
+			treealg=" -X 1.0 "
+			sueff="1.0"
 		elif [ "$1" = "--minimumlinkage" ]; then
-			treealg=" -q "
+			treealg=" -X 0.0 "
+			sueff="0.0"
+		elif [ "$1" = "--mixedlinkage" ]; then
+			shift   
+			sueff="$1"
+			treealg=" -X $1"
 		elif [ "$1" = "--noscore" ]; then
 			scorecalcopt=" -Z "
 		elif [ "$1" = "--6mermultipair" ]; then
@@ -382,6 +429,10 @@ if [ $# -gt 0 ]; then
 		elif [ "$1" = "--globalgenafpair" ]; then
 			distance="globalgenaf"
 			pairspecified=1
+			echo "" 1>&2
+			echo "--globalgenaf is no longer supported!" 1>&2
+			echo "" 1>&2
+			exit 1;
 		elif [ "$1" = "--localgenafpair" ]; then
 			distance="localgenaf"
 			pairspecified=1
@@ -402,7 +453,11 @@ if [ $# -gt 0 ]; then
 		elif [ "$1" = "--nofft" ]; then 
 			fft=0
 		elif [ "$1" = "--quiet" ]; then 
-			progressfile="/dev/null"
+			if [ $os = "mingw" ]; then
+				progressfile="nul"
+			else
+				progressfile="/dev/null"
+			fi
 		elif [ "$1" = "--debug" ]; then 
 			debug=1
 		elif [ "$1" = "--coreext" ]; then 
@@ -416,7 +471,7 @@ if [ $# -gt 0 ]; then
 		elif [ "$1" = "--progress" ]; then 
 			shift   
 			progressfile="$1"
-			if ! ( expr "$progressfile" : "/" > /dev/null || expr "$progressfile" : "[A-Za-z]\:" > /dev/null ) ; then
+			if ! ( expr "$progressfile" : "\/" > /dev/null || expr "$progressfile" : "[A-Za-z]\:" > /dev/null ) ; then
 				echo "Specify a progress file name with the absolute path!" 1>&2
 				exit
 			fi
@@ -430,10 +485,17 @@ if [ $# -gt 0 ]; then
 				exit
 			fi
 			numthreads=`expr "$1" - 0` 
+		elif [ "$1" = "--threadit" ]; then 
+			shift
+			if ! expr "$1" : "[0-9\-]" > /dev/null ; then
+				echo "Specify the number of threads for the iterative step!" 1>&2
+				exit
+			fi
+			numthreadsit=`expr "$1" - 0` 
 		elif [ "$1" = "--last_subopt" ]; then 
 			last_subopt="-S"
 		elif [ "$1" = "--last_once" ]; then 
-			last_once="-Q"
+			last_once="-U"
 		elif [ "$1" = "--last_m" ]; then 
 			shift
 			last_m=`expr "$1" - 0` 
@@ -457,6 +519,18 @@ if [ $# -gt 0 ]; then
 			scoreoutarg="-S -B"
 		elif [ "$1" = "--outnum" ]; then 
 			scoreoutarg="-n"
+		elif [ "$1" = "--leavegappyregion" ]; then 
+			legacygapopt="-L"
+		elif [ "$1" = "--legacygappenalty" ]; then 
+			legacygapopt="-L"
+		elif [ "$1" = "--merge" ]; then
+			shift
+			mergetable="$1"
+			if [ ! -e "$mergetable" ]; then
+				echo "Cannot open $mergetable" 1>&2
+				echo "" 1>&2
+				exit
+			fi
 		elif [ "$1" = "--addprofile" ]; then 
 			shift   
 			addarg0="-I"
@@ -470,6 +544,11 @@ if [ $# -gt 0 ]; then
 			addarg0="-K -I"
 			addfile="$1"
 			fragment=1
+		elif [ "$1" = "--addfull" ]; then 
+			shift   
+			addarg0="-K -I"
+			addfile="$1"
+			fragment=-1
 		elif [ "$1" = "--maxiterate" ]; then 
 			shift   
 			iterate=`expr "$1" - 0` 
@@ -484,12 +563,18 @@ if [ $# -gt 0 ]; then
 				echo "Specify the number of tree rebuilding!" 1>&2
 				exit
 			fi
+		elif [ "$1" = "--text" ]; then 
+			sbstmodel=" -b -2 -a "
+			f2clext="-E"
+			seqtype="-P"
+			fft=0
 		elif [ "$1" = "--aamatrix" ]; then 
 			shift   
 			sbstmodel=" -b -1 "
 			aamatrix="$1"
 			if [ ! -e "$aamatrix" ]; then
 				echo "Cannot open $aamatrix" 1>&2
+				echo "" 1>&2
 				exit
 			fi
 		elif [ "$1" = "--treein" ]; then 
@@ -499,6 +584,7 @@ if [ $# -gt 0 ]; then
 			treeinfile="$1"
 			if [ ! -e "$treeinfile" ]; then
 				echo "Cannot open $treeinfile" 1>&2
+				echo "" 1>&2
 				exit
 			fi
 		elif [ "$1" = "--topin" ]; then 
@@ -591,10 +677,30 @@ if [ $# -gt 0 ]; then
 				echo "Specify op!" 1>&2
 				exit
 			fi
+		elif [ "$1" = "--opdist" ]; then 
+			shift   
+			gopdist="$1"
+			if ! expr "$1" : "[0-9]" > /dev/null ; then
+				echo "Specify opdist!" 1>&2
+				exit
+			fi
+			opdistspecified=1
+		elif [ "$1" = "--allowshift" ]; then 
+			allowshift=1
+		elif [ "$1" = "--shiftpenalty" ]; then 
+			shift   
+			spfactor="$1"
+			if ! expr "$1" : "[0-9]" > /dev/null ; then
+				echo "Specify sf!" 1>&2
+				exit
+			fi
+			shiftpenaltyspecified=1
 		elif [ "$1" = "--ep" ]; then 
 			shift   
-			aof="$1"
-			if ! expr "$1" : "[0-9]" > /dev/null ; then
+#			aof="$1"
+			tmpval="$1"
+			aof=`awk "BEGIN{ print -1.0 * $tmpval}"`
+			if ! expr "$1" : "[0-9\-]" > /dev/null ; then
 				echo "Specify ep!" 1>&2
 				exit
 			fi
@@ -644,6 +750,40 @@ if [ $# -gt 0 ]; then
 		elif [ "$1" = "--corewin" ]; then 
 			shift   
 			corewin="$1"
+		elif [ "$1" = "--strdir" ]; then
+			shift
+			strdir="$1"
+		elif [ "$1" = "--pdbidlist" ]; then
+			shift
+			pdblist="$1"
+			if [ ! -e "$pdblist" ]; then
+				echo "Cannot open $pdblist" 1>&2
+				echo "" 1>&2
+				exit
+			fi
+		elif [ "$1" = "--pdbfilelist" ]; then
+			shift
+			ownlist="$1"
+			if [ ! -e "$ownlist" ]; then
+				echo "Cannot open $ownlist" 1>&2
+				echo "" 1>&2
+				exit
+			fi
+		elif [ "$1" = "--enrich" ]; then
+			enrich=1
+			enrichseq=1
+			enrichstr=1
+			seektarget=""
+		elif [ "$1" = "--enrichseq" ]; then
+			enrich=1
+			enrichseq=1
+			enrichstr=0
+			seektarget="-seq"
+		elif [ "$1" = "--enrichstr" ]; then
+			enrich=1
+			enrichseq=0
+			enrichstr=1
+			seektarget="-str"
 		elif [ "$1" = "--seedtable" ]; then
 			shift
 			seedtable="y"
@@ -652,6 +792,21 @@ if [ $# -gt 0 ]; then
 			shift
 			seed="m"
 			seedfiles="$seedfiles $1"
+		elif [ "$1" = "--similaritylevel" ]; then
+			shift
+			similarityoffset="$1"
+		elif [ "$1" = "--unalignlevel" ]; then
+			shift
+			unalignlevel="$1"
+			unalignspecified=1
+		elif [ "$1" = "--skipiterate" ]; then
+			shift
+			fixthreshold="$1"
+		elif [ "$1" = "--bunkatsunashi" ]; then
+			bunkatsuopt=" -B "
+		elif [ "$1" = "--sparsepickup" ]; then
+			shift
+			npickup="$1"
 		elif [ $progname = "fftns" -o  $progname = "nwns" ]; then
 			if [ "$1" -gt 0 ]; then
 				cycle=`expr "$1" - 0`
@@ -659,11 +814,13 @@ if [ $# -gt 0 ]; then
 		else
 			echo "Unknown option:  $1" 1>&2
 			er=1;
+#			exit 1;
 		fi
 		shift   
 	done;
 
 
+	echo "" 1>"$progressfile"
 
 #	TMPFILE=/tmp/$progname.$$
 	TMPFILE=`mktemp -dt $progname.XXXXXXXXXX`
@@ -685,6 +842,7 @@ if [ $# -gt 0 ]; then
 				printf '';
 			else
 				echo "$0": Cannot open "$addfile". 1>&2
+				echo "" 1>&2
 				exit 1;
 			fi
 
@@ -693,9 +851,12 @@ if [ $# -gt 0 ]; then
 			cat "$addfile"        | tr "\r" "\n" | grep -v "^$" >> $TMPFILE/infile
 			cat "$addfile"        | tr "\r" "\n" | grep -v "^$" > $TMPFILE/_addfile
 			cat "$aamatrix"       | tr "\r" "\n" | grep -v "^$" > $TMPFILE/_aamtx
+			cat "$mergetable"     | tr "\r" "\n" | grep -v "^$" > $TMPFILE/_subalignmentstable
 			cat "$treeinfile"     | tr "\r" "\n" | grep -v "^$" > $TMPFILE/_guidetree
 			cat "$seedtablefile"  | tr "\r" "\n" | grep -v "^$" > $TMPFILE/_seedtablefile
 			cat "$laraparams"     | tr "\r" "\n" | grep -v "^$" > $TMPFILE/_lara.params
+			cat "$pdblist"        | tr "\r" "\n" | grep -v "^$" > $TMPFILE/pdblist
+			cat "$ownlist"        | tr "\r" "\n" | grep -v "^$" > $TMPFILE/ownlist
 
 #			echo $seedfiles
 			infilename="$1"
@@ -709,6 +870,7 @@ if [ $# -gt 0 ]; then
 					cat "$1" | tr "\r" "\n" >  $TMPFILE/seed$#
 				else
 					echo "$0": Cannot open "$1". 1>&2
+					echo "" 1>&2
 					exit 1;
 				fi
 				seednseq=$seednseq" "`grep -c '^[>|=]' $TMPFILE/seed$#`
@@ -721,63 +883,233 @@ if [ $# -gt 0 ]; then
 
 		else
 			echo "$0": Cannot open "$1". 1>&2
+			echo "" 1>&2
 			er=1
 #			exit 1;
 		fi
 	else
-		echo '$#'"=$#" 1>&2
+#		echo '$#'"=$#" 1>&2
 		er=1
 	fi
 
 
-	if [ $numthreads -eq 0 -a $parallelizationstrategy = "BESTFIRST" ]; then
-		echo 'Impossible' 1>&2;
-		exit 1;
-	fi
 
 	if [ $numthreads -lt 0 ]; then
 		if [ $os = "linux" ]; then
+			nlogicalcore=`cat /proc/cpuinfo | grep "^processor" | uniq | wc -l`
 			ncoresinacpu=`cat /proc/cpuinfo | grep 'cpu cores' | uniq | awk '{print $4}'`
 			nphysicalcpu=`cat /proc/cpuinfo | grep 'physical id' | sort | uniq | wc -l`
-			nlogicalcore=`cat /proc/cpuinfo | grep processor | uniq | wc -l`
-			numthreads=`expr $ncoresinacpu '*' $nphysicalcpu`
-#			if [ $nlogicalcore -gt $numthreads ]; then    # Hyperthreading
-#				numthreads=`expr $numthreads '+' 1`
-#			fi
+			if [ $nlogicalcore -eq 0 ]; then
+				echo "Cannot get the number of processors from /proc/cpuinfo" 1>>"$progressfile"
+				exit 1
+			fi
+			if [ ${#ncoresinacpu} -gt 0 -a $nphysicalcpu -gt 0 ]; then
+				numthreads=`expr $ncoresinacpu '*' $nphysicalcpu`
+#				if [ $nlogicalcore -gt $numthreads ]; then    # Hyperthreading
+#					numthreads=`expr $numthreads '+' 1`
+#				fi
+			else
+				numthreads=$nlogicalcore
+			fi
 		elif [ $os = "darwin" ]; then
 			numthreads=`sysctl -n hw.physicalcpu`
-			nlogicalcore=`sysctl -n hw.logicalcpu`
+			if [ -z $numthreads ]; then
+				echo "Cannot get the number of physical cores from sysctl" 1>>"$progressfile"
+				exit 1
+			fi
+#			nlogicalcore=`sysctl -n hw.logicalcpu`
 #			if [ $nlogicalcore -gt $numthreads ]; then    # Hyperthreading
 #				numthreads=`expr $numthreads '+' 1`
 #			fi
+		elif [ $os = "mingw" -o $os = "cygwin" ]; then
+			numthreads=`wmic cpu get NumberOfCores | head -2 | tail -1 | awk '{print $1}'`
 		else
-			echo "Cannot count the number of physical cores" 2>>"$progressfile"
+			echo "Cannot count the number of physical cores." 1>>"$progressfile"
 			exit 1
 		fi
 		echo $os 1>>"$progressfile"
 		echo $numthreads 1>>"$progressfile"
 	fi
 
+	if [ $numthreadsit -lt 0 ]; then
+		if [ $numthreads -lt 11 ]; then
+			numthreadsit=$numthreads
+		else
+			numthreadsit=10
+		fi
+	fi
+
+	if [ $numthreadsit -eq 0 -a $parallelizationstrategy = "BESTFIRST" ]; then
+		echo 'Impossible' 1>&2;
+		exit 1;
+	fi
+
+	if [ "$addarg0" != " " ]; then
+		iterate=0  # 2013/03/23
+		"$prefix/countlen" < $TMPFILE/_addfile > $TMPFILE/addsize 2>>"$progressfile"
+		nadd=`awk '{print $1}' $TMPFILE/addsize`
+		if [ $nadd -eq "0" ]; then
+			echo Check $addfile 1>&2
+			exit 1;
+		fi
+		if [ $seed != "x" -o $seedtable != "x" ]; then
+			echo 'Impossible' 1>&2;
+			echo 'Use either ONE of --seed, --seedtable, --addprofile and --add.' 1>&2
+			exit 1;
+		fi
+	else
+		nadd="0"
+	fi
+
 	if [ $auto -eq 1 ]; then
 		"$prefix/countlen" < $TMPFILE/infile > $TMPFILE/size 2>>"$progressfile"
 		nseq=`awk '{print $1}' $TMPFILE/size`
 		nlen=`awk '{print $3}' $TMPFILE/size`
-		if [ $nlen -lt 2000 -a $nseq -lt 100 ]; then
+		if [ $nlen -lt 3000 -a $nseq -lt 100 ]; then
 			distance="local"
 			iterate=1000
+			cycle=1
+		elif [ $nlen -lt 1000 -a $nseq -lt 200 ]; then
+			distance="local"
+			iterate=2
+			cycle=1
 		elif [ $nlen -lt 10000 -a $nseq -lt 500 ]; then
 			distance="ktuples"
 			iterate=2
-		else
+			cycle=2
+		elif [ $nseq -lt 50000 ]; then  # changed from 10000 2014/Oct/4
 			distance="ktuples"
 			iterate=0
-			if [ $nseq -gt 10000 ]; then
-				cycle=1
+			cycle=2
+		elif [ $nseq -lt 90000 ]; then  # changed from 30000 2014/Oct/4
+			distance="ktuples"
+			iterate=0
+			cycle=1
+		elif [ $nlen -lt 3000 ]; then
+			distance="parttree"
+			partdist="localalign"
+			algopt=" "
+			algoptit=" "
+#			algspecified=1
+			cycle=1
+		else
+			distance="parttree"
+			partdist="ktuples"
+			algopt=" "
+			algoptit=" "
+#			algspecified=1
+			cycle=1
+		fi
+		if [ $fragment -ne 0 ]; then
+			norg=`expr $nseq '-' $nadd`
+			npair=`expr $norg '*' $nadd`
+			echo "nadd = " $nadd               1>>"$progressfile"
+			echo "npair = " $npair             1>>"$progressfile"
+# nagasa check!
+#
+			if [ $npair -gt 10000000 ]; then  # ato de kentou
+				distance="ktuples"
+				echo "use ktuples! size=$tuplesize" 1>>"$progressfile"
+			elif [ $npair -gt 3000000 ]; then  # ato de kentou
+				distance="multi"
+				weighti="0.0"
+				echo "use multipair, weighti=0.0!" 1>>"$progressfile"
 			else
-				cycle=2
+				distance="multi"
+				echo "use multipair, weighti=$weighti!" 1>>"$progressfile"
 			fi
+			pairspecified=1
 		fi
 	fi
+
+	if [ `awk "BEGIN {print( 0.0+\"$sueff\" < 0.0 || 0.0+\"$sueff\" > 1.0 )}"` -gt 0 ]; then
+		printf "\n%s\n\n" "The argument of --mixedlinkage must be between 0.0 and 1.0" 1>>"$progressfile"
+		exit 1;
+	fi
+
+	if [ $allowshift -eq 1 ]; then
+		if [ $unalignspecified -ne 1 ]; then
+			unalignlevel="0.8"
+		fi
+		if [ $shiftpenaltyspecified -ne 1 ]; then
+			spfactor="2.00"
+		fi
+	fi
+
+	if [ $opdistspecified -ne 1 ]; then
+		gopdist=$gop
+	fi
+
+	if [ `awk "BEGIN {print( 0.0+\"$spfactor\" < 100.0 )}"` -gt 0 ]; then
+		termgapopt=" "
+		if [ $distance = "localgenaf" ]; then
+			printf "\n%s\n" "The combination of --allowshift and --genafpair (E-INS-i/-1) is not supported." 1>>"$progressfile"
+			printf "%s\n" "Instead, please try --allowshift --globalpair (G-INS-i/-1 in the web version)," 1>>"$progressfile"
+			printf "%s\n\n" "which covers the situation for --genafpair (E-INS-i/-1), too." 1>>"$progressfile"
+			exit 1;
+		fi
+		if [ $fragment -ne 0 ]; then
+			printf "\n%s\n\n" "At present, --unalignlevel # or --allowshift is not supported with the --addfragments option." 1>>"$progressfile"
+			exit 1;
+		fi
+	fi
+
+	if [ `awk "BEGIN {print( 0.0+\"$spfactor\" < 1.0 )}"` -gt 0 ]; then
+			printf "\n%s\n" "shiftpenalty must be >1." 1>>"$progressfile"
+			exit 1;
+	fi
+
+	if [ `awk "BEGIN {print( 0.0+\"$fixthreshold\" < 0.0 )}"` -gt 0 ]; then
+		printf "\n%s\n\n" "The 'fix' parameter must be >= 0.0" 1>>"$progressfile"
+		exit 1;
+	fi
+
+	if [ `awk "BEGIN {print( 0.0+\"$unalignlevel\" < 0.0 || 0.0+\"$unalignlevel\" > 1.0 )}"` -gt 0 ]; then
+		printf "\n%s\n\n" "The 'unalignlevel' parameter must be between 0.0 and 1.0" 1>>"$progressfile"
+		exit 1;
+	fi
+	if [ `awk "BEGIN {print( 0.0+\"$unalignlevel\" > 0.0 )}"` -gt 0 ]; then
+		laof="0"
+		lexp="0"
+		pgaof="0"
+		pgexp="0"
+		LEXP="0"
+		GEXP="0"
+		termgapopt=" "
+#		if [ $auto -eq 1 -o $fragment -ne 0 -o $iterate -gt 0 ]; then
+		if [ $fragment -ne 0 ]; then
+			printf "\n%s\n\n" "At present, the 'unalignlevel > 0' mode is not supported with the --addfragments option." 1>>"$progressfile"
+			exit 1;
+		fi
+		if [ $distance = "parttree" ]; then
+			printf "\n%s\n\n" "At present, the 'unalignlevel > 0' mode is not supported in the (dp)parttree option." 1>>"$progressfile"
+			exit 1;
+		fi
+		if [ $distance = "localgenaf" ]; then
+			printf "\n%s\n" "The --genafpair is not supported in the 'unalignlevel > 0' mode." 1>>"$progressfile"
+			printf "%s\n" "Instead, please try --unalignlevel xx --globalpair," 1>>"$progressfile"
+			printf "%s\n\n" "which covers the situation for --genafpair (E-INS-i), too." 1>>"$progressfile"
+			exit 1;
+		fi
+#		if [ $distance != "ktuples" -a `awk "BEGIN {print( 0.0+\"$weighti\" > 0.0 )}"` -gt 0 -a $iterate -gt 0 ]; then
+#			printf "\n%s\n\n" "Please add --weighti 0.0, for now." 1>>"$progressfile"
+#			exit 1;
+#		fi
+	fi
+
+	if [ `awk "BEGIN {print( 0.0+\"$similarityoffset\" != 0.0 && 0.0+\"$unalignlevel\" != 0.0 )}"` -gt 0 ]; then
+		printf "\n%s\n\n" "Do not simultaneously specify --similaritylevel and --unalignlevel" 1>>"$progressfile"
+		exit 1;
+	fi
+
+	if [ `awk "BEGIN {print( 0.0+\"$similarityoffset\" < -1.0 || 0.0+\"$similarityoffset\" > 1.0 )}"` -gt 0 ]; then
+		printf "\n%s\n\n" "Similarity must be between -1.0 and +1.0" 1>>"$progressfile"
+		exit 1;
+	fi
+	aof=`awk "BEGIN{print 0.0 + \"$similarityoffset\" + $aof}"`
+	laof=`awk "BEGIN{print 0.0 + \"$similarityoffset\" + $laof}"`
+	pgaof=`awk "BEGIN{print 0.0 + \"$similarityoffset\" + $pgaof}"`
+
 
 	if [ $parallelizationstrategy = "BESTFIRST" -o  $parallelizationstrategy = "BAATARI0" ]; then
 		iteratelimit=254
@@ -801,15 +1133,15 @@ if [ $# -gt 0 ]; then
 		rnaoptit=" -F "
 	fi
 
-	if [ $algspecified -eq 0 ]; then
-		if [ $distance = "parttree" ]; then 
-			algopt=" -Q "
-			algoptit=" "
-		else
-			algopt=" "
-			algoptit=" "
-		fi
-	fi
+#	if [ $algspecified -eq 0 ]; then
+#		if [ $distance = "parttree" ]; then 
+#			algopt=" -Q "
+#			algoptit=" "
+#		else
+#			algopt=" "
+#			algoptit=" "
+#		fi
+#	fi
 
 	model="$sbstmodel $kappa $fmodel"
 
@@ -821,7 +1153,7 @@ if [ $# -gt 0 ]; then
 #		echo ""  1>&2
 #		echo "  Usage: `basename $0` [options] inputfile > outputfile" 1>&2
 	    echo "  http://mafft.cbrc.jp/alignment/software/" 1>&2
-		echo "  NAR 30:3059-3066 (2002), Briefings in Bioinformatics 9:286-298 (2008)"        1>&2
+		echo "  MBE 30:772-780 (2013), NAR 30:3059-3066 (2002)"        1>&2
 #		echo "------------------------------------------------------------------------------" 1>&2
 #		echo "  % mafft in > out" 1>&2
 		echo "------------------------------------------------------------------------------" 1>&2
@@ -1076,7 +1408,7 @@ if [ $# -gt 0 ]; then
 		cycle=3
 	fi
 
-	if [ $nseq -gt 6000 -a $iterate -gt 1 ]; then
+	if [ $nseq -gt 60000 -a $iterate -gt 1 ]; then   # 2014/Oct/22, test
 		echo "Too many sequences to perform iterative refinement!" 1>&2
 		echo "Please use a progressive method." 1>&2
 		exit 1
@@ -1088,7 +1420,7 @@ if [ $# -gt 0 ]; then
 		fi
 	fi
 
-	if [ $fragment -eq 1 ]; then
+	if [ $fragment -ne 0 ]; then
 		if [ $pairspecified -eq 0 ]; then
 			distance="multi"
 		fi
@@ -1104,6 +1436,14 @@ if [ $# -gt 0 ]; then
 	fi
 
 	if [ $distance = "parttree" ]; then
+		if [ $mergetable != "/dev/null" ]; then
+			echo "The combination of (dp)parttree and merge is Impossible.  " 1>&2
+			exit 1
+		fi
+		if [ $addfile != "/dev/null" ]; then
+			echo "The combination of (dp)parttree and add(fragments) is Impossible.  " 1>&2
+			exit 1
+		fi
 		if [ $seed != "x" -o $seedtable != "x" ]; then
 			echo "Impossible" 1>&2
 			exit 1
@@ -1117,21 +1457,23 @@ if [ $# -gt 0 ]; then
 		fi
 		outorder="input"   # partorder ga kiku
 		if [ $partdist = "localalign" ]; then
-			splitopt=" -L "    # -L -l -> fast 
+			splitopt=" -U "    # -U -l -> fast 
+			cycle=1
 		elif [ $partdist = "fasta" ]; then
 			splitopt=" -S "
+			cycle=1
 		else
 			splitopt="  "
 		fi
 	fi
 
 
-
-	if [ \( $distance = "ktuples" -o $distance = "ktuplesmulti" \) -a \( $seed = "x" -a $seedtable = "x" \) ]; then
-		localparam=" "
-	elif [ \( $distance = "ktuples" -o $distance = "ktuplesmulti" \) -a \( $seed != "x" -o $seedtable != "x" \) ]; then
+	if [ \( $distance = "ktuples" -o $distance = "ktuplesmulti" \) -a \( $seed = "x" -a $seedtable = "x" -a $ownlist = "/dev/null" -a $pdblist = "/dev/null" -a $enrichstr -eq 0 \) ]; then
+		localparam=""
+		weighti="0.0"
+	elif [ \( $distance = "ktuples" -o $distance = "ktuplesmulti" \) -a \( $seed != "x" -o $seedtable != "x" -o $ownlist != "/dev/null" -o $pdblist != "/dev/null" -o $enrichstr -eq 1 \) ]; then
 		if [ $cycle -lt 2 ]; then
-			cycle=2                # nazeda
+			cycle=2                # disttbfast ha seed hi-taiou #  chuui 2014Aug21
 		fi
 		if [ $iterate -lt 2 ]; then
 			echo "############################################################################" 1>&2
@@ -1148,16 +1490,18 @@ if [ $# -gt 0 ]; then
 		fi
 		localparam="-l "$weighti
 	elif [ $distance = "parttree" ]; then
-		localparam=" "
+		localparam=""
+		weighti="0.0"
 		if [ $groupsize -gt -1 ]; then
 			cycle=1
 		fi
 	else
-		localparam=" -l "$weighti
+		localparam="-B -l "$weighti   # weighti=0 demo bunkatsu nashi
 		if [ $cycle -gt 1 ]; then  # 09/01/08
 			cycle=1
 		fi
 	fi
+
 
 	if [ $distance = "localgenaf" -o $distance = "globalgenaf" ]; then
 		aof="0.000"
@@ -1180,10 +1524,19 @@ if [ $# -gt 0 ]; then
 			echo 'Use either one of seedtable and seed.  Not both.' 1>&2
 			exit 1
 	fi
-#	if [ $seedtable != "x" -a $anysymbol -gt 0 ]; then
-#			echo 'The combination of --seedtable and --anysymbol is not supported.' 1>&2
-#			exit 1
-#	fi
+	if [ $f2clext = "-E" -a $anysymbol -gt 0 ]; then
+			echo '' 1>&2
+			echo 'At present, the combination of --text and ( --anysymbol or --preservecase ) is impossible.' 1>&2
+			echo '' 1>&2
+			exit 1
+	fi
+
+	if [ $f2clext = "-E" -a $aamatrix != "/dev/null" ]; then
+			echo '' 1>&2
+			echo 'At present, the combination of --text and (--aamatrix) is impossible.' 1>&2
+			echo '' 1>&2
+			exit 1
+	fi
 
 	if [ $treein -eq 1 ]; then
 #		if [ $iterate -gt 0 ]; then
@@ -1193,25 +1546,48 @@ if [ $# -gt 0 ]; then
 		cycle=1
 	fi
 
-	if [ "$addarg0" != " " ]; then
-		"$prefix/countlen" < $TMPFILE/_addfile > $TMPFILE/addsize 2>>"$progressfile"
-		nadd=`awk '{print $1}' $TMPFILE/addsize`
-		if [ $nadd -eq "0" ]; then
-			echo Check $addfile 1>&2
-			exit 1;
+	if [ $nadd -gt "0" ]; then
+		if [ $fragment -eq "1" ]; then
+			addarg="$addarg0 $nadd -g -0.01"
+			addsinglearg=""
+			cycle=1 # chuui 2014Aug25
+		elif [ $fragment -eq "-1" ]; then
+			addarg="$addarg0 $nadd -V" # allowlongadds, 2014/04/02
+			addsinglearg="-V"
+			cycle=1 # chuui 2014Aug25
+		else
+			addarg="$addarg0 $nadd"
+			addsinglearg=""
 		fi
-		addarg="$addarg0 $nadd -g -0.01"
-		cycle=1
+#		cycle=1 # chuui 2014Aug19
 		iterate=0
 #		treealg=" -q "  ## 2012/01/24  ## removed 2012/02/06
-		if [ $seed != "x" -o $seedtable != "x" ]; then
-			echo 'Impossible' 1>&2;
-			echo 'Use either ONE of --seed, --seedtable, --addprofile and --add.' 1>&2
-			exit 1;
+	fi
+
+
+	if [ -z "$localparam" -a $fragment -eq 0 -a $distance != "parttree" ]; then
+#		echo "use disttbfast"
+#		echo cycle = $cycle
+		cycletbfast=1            # tbfast wo jikkou shinai
+		cycledisttbfast=$cycle   # disttbfast ni -E cycle wo watasu
+		if [ $cycledisttbfast -eq 0 ]; then # --treeout de tsukau
+			cycledisttbfast=1
 		fi
 	else
-		nadd="0"
+#		echo "use tbfast"
+#		echo cycle = $cycle
+		cycletbfast=$cycle       # 1 ijou nara jikkou
+		cycledisttbfast=1        # disttbfast ha ikkai dake
 	fi
+
+#	echo localparam=
+#	echo $localparam
+#	echo cycletbfast=
+#	echo $cycletbfast
+#	echo cycledisttbfast=
+#	echo $cycledisttbfast
+
+#exit
 
 	if [ $adjustdirection -gt 0 -a $seed != "x" ]; then
 			echo '' 1>&2
@@ -1228,40 +1604,52 @@ if [ $# -gt 0 ]; then
 			echo '--larapair, --slarapair, --foldalignlocalpair or --foldalignglobalpair' 1>&2
 			exit 1
 		fi
+		if [ $f2clext = "-E" ]; then
+				echo '' 1>&2
+				echo 'For RNA alignment, the --text mode is impossible.' 1>&2
+				echo '' 1>&2
+				exit 1
+		fi
 	fi
 
+# cycle ga atode henkou sareru node koko de strategy no namae wo kimeru.
+# kokokara
 	if [ $mccaskill -eq 1 -o $dafs -eq 1 -o $rnaalifold -eq 1 -o $contrafold -eq 1 ]; then
 		if [ $distance = "scarna" -o $distance = "dafs" -o $distance = "lara" -o $distance = "slara" -o $distance = "foldalignlocal" -o $distance = "foldalignglobal" ]; then
-			strategy="X-I"
+			strategy="X-"
 		elif [ $distance = "global" -o $distance = "local" -o $distance = "localgenaf" -o "globalgenaf" ]; then
-			strategy="Q-I"
+			strategy="Q-"
 		fi
 	elif [ $distance = "fasta" -a $sw -eq 0 ]; then
-		strategy="F-I"
+		strategy="F-"
 	elif [ $distance = "fasta" -a $sw -eq 1 ]; then
-		strategy="H-I"
+		strategy="H-"
 	elif [ $distance = "blast" ]; then
-		strategy="B-I"
+		strategy="B-"
 	elif [ $distance = "global" -o $distance = "distonly" ]; then
-		strategy="G-I"
+		strategy="G-"
 	elif [ $distance = "local" ]; then
-		strategy="L-I"
+		strategy="L-"
 	elif [ $distance = "last" ]; then
-		strategy="Last-I"
+		strategy="Last-"
 	elif [ $distance = "hybrid" ]; then
-		strategy="Hybrid-I"
+		strategy="Hybrid-"
 	elif [ $distance = "multi" ]; then
-		strategy="Multi-I"
+		strategy="Multi-"
 	elif [ $distance = "lastmulti" ]; then
-		strategy="LastMulti-I"
+		strategy="LastMulti-"
 	elif [ $distance = "localgenaf" ]; then
-		strategy="E-I"
+		strategy="E-"
 	elif [ $distance = "globalgenaf" ]; then
-		strategy="K-I"
+		strategy="K-"
 	elif [ $fft -eq 1 ]; then
 		strategy="FFT-"
 	else
 		strategy="NW-"
+	fi
+#	if [ `echo "$weighti>0.0" | bc` -gt 0 ]; then
+	if [ `awk "BEGIN {print($weighti>0.0)}"` -gt 0 ]; then
+		strategy=$strategy"I"
 	fi
 	strategy=$strategy"NS-"
 	if [ $iterate -gt 0 ]; then
@@ -1276,6 +1664,8 @@ if [ $# -gt 0 ]; then
 		fi
 	elif [ $fragment -eq 1 ]; then
 		strategy=$strategy"fragment"
+	elif [ $fragment -eq -1 ]; then
+		strategy=$strategy"full"
 	else
 		strategy=$strategy$cycle
 	fi
@@ -1319,9 +1709,9 @@ if [ $# -gt 0 ]; then
 	fi
 
 	if [ $outputformat = "clustal" -a $outorder = "aligned" ]; then
-		outputopt=" -c $strategy -r $TMPFILE/order  "
+		outputopt=" -c $strategy -r $TMPFILE/order $f2clext "
 	elif [ $outputformat = "clustal" -a $outorder = "input" ]; then
-		outputopt=" -c $strategy  "
+		outputopt=" -c $strategy  $f2clext "
 	elif [ $outputformat = "phylip" -a $outorder = "aligned" ]; then
 		outputopt=" -y -r $TMPFILE/order "
 	elif [ $outputformat = "phylip" -a $outorder = "input" ]; then
@@ -1331,13 +1721,15 @@ if [ $# -gt 0 ]; then
 	else
 		outputopt="null"
 	fi
+# kokomade
+
+	
 	
 	(
 		cd $TMPFILE;
 
 		cat /dev/null > pre
 
-		echo "" 1>"$progressfile"
 		echo "nseq = " $nseq              1>>"$progressfile"
 		echo "distance = " $distance      1>>"$progressfile"
 		echo "iterate = " $iterate        1>>"$progressfile"
@@ -1345,14 +1737,14 @@ if [ $# -gt 0 ]; then
 
 		if [ $anysymbol -eq 1 ]; then
 			mv infile orig
-			"$prefix/replaceu" -i orig > infile 2>>"$progressfile" || exit 1
+			"$prefix/replaceu" $seqtype -i orig > infile 2>>"$progressfile" || exit 1
 		fi
 
 		if [ $adjustdirection -gt 0 ]; then
-			if [ $fragment -eq 1 ]; then
-				fragarg="-F"
+			if [ $fragment -ne 0 ]; then
+				fragarg="-F" #
 			else
-				fragarg=" "
+				fragarg="-F" # 2014/02/06, do not consider other additional sequences, even in the case of --add
 			fi
 			if [ $adjustdirection -eq 1 ]; then
 				"$prefix/makedirectionlist" $fragarg -C $numthreads -m -I $nadd -i infile -t 0.01 > _direction
@@ -1362,8 +1754,60 @@ if [ $# -gt 0 ]; then
 			"$prefix/setdirection" -d _direction -i infile > infiled
 			mv infiled infile
 			if [ $anysymbol -eq 1 ]; then
-				"$prefix/setdirection" -d _direction -i orig > origd
+				"$prefix/setdirection" -d _direction -i orig -r  > origd
 				mv origd orig
+			fi
+		fi
+
+		if [ $seed != "x" -o $seedtable != "x" ]; then
+			if [ $pdblist != "/dev/null" -o $ownlist != "/dev/null" ]; then
+				echo "The combination of --seed and (--pdbidlist or --pdbfilelist) is impossible."  1>>"$progressfile"
+				exit 1
+			fi
+			if [ $enrich -eq 1 ]; then
+				echo "The combination of --seed and (--enrich, --enrichseq or --enrichstr) is impossible at present."  1>>"$progressfile"
+				exit 1
+			fi
+		fi
+
+		if [ $enrich -eq 1 ]; then
+			if [ $ownlist != "/dev/null" ]; then
+				echo "Warning: Sequence homologs of the structures given with the --pdbfilelist option cannot be collected.\n" 1>>"$progressfile"
+			fi
+			echo "SEEKQUENCER (http://sysimm.ifrec.osaka-u.ac.jp/seekquencer/) is" 1>>"$progressfile"
+			if [ $pdblist != "/dev/null" ]; then
+				echo "collecting homoplogs of the input sequences and the structures given with the --pdbidlist option." 1>>"$progressfile"
+				perl "$prefix/seekquencer_premafft.pl" $seektarget -run thread -trd 2 -seqd uniref90 -blim 1000 -noin -seqf infile -idf pdblist -out seekout -mod mafftash-split 2>>"seekerr"
+				seekres="$?"
+			else
+				echo "collecting homologs of the input sequences." 1>>"$progressfile"
+				perl "$prefix/seekquencer_premafft.pl" $seektarget -run thread -trd 2 -seqd uniref90 -blim 1000 -noin -seqf infile -out seekout -mod mafftash-split 2>>"seekerr"
+				seekres="$?"
+			fi
+			cat seekerr  1>>"$progressfile"
+
+			if [ $seekres -ne "0" ]; then
+				echo "Error in SEEKQUENCER" 1>>"$progressfile"
+				exit 1;
+			fi
+			echo "Done." 1>>"$progressfile"
+
+			if [ $enrichseq -eq 1 ]; then
+#				cat seekout.seq >> infile
+				if [ $anysymbol -eq 1 ]; then
+					"$prefix/replaceu" $seqtype -i seekout.seq -o $nseq >> infile
+					cat seekout.seq >> orig
+				else
+					"$prefix/replaceu" $seqtype -i seekout.seq | sed 's/_os_[0-9]*_oe_//' >> infile
+				fi
+
+			fi
+			if [ $enrichstr -eq 1 ]; then
+				nseekstr=`wc -l < seekout.str`
+				if [ $nseekstr -gt 1 ]; then
+					cat seekout.str >> pdblist
+					pdblist="tsukaimasu"
+				fi
 			fi
 		fi
 
@@ -1387,7 +1831,7 @@ if [ $# -gt 0 ]; then
 
 				if [ $anysymbol -eq 1 ]; then
 					cat seed$# >> orig
-					"$prefix/replaceu" -i seed$# -o $seedoffset > clean 2>>"$progressfile" || exit 1
+					"$prefix/replaceu" $seqtype -i seed$# -o $seedoffset > clean 2>>"$progressfile" || exit 1
 					mv clean seed$#
 				fi
 				"$prefix/multi2hat3s" -t $nseq -o $seedoffset -i seed$# >> infile 2>>"$progressfile" || exit 1
@@ -1399,17 +1843,70 @@ if [ $# -gt 0 ]; then
 			done;
 #			echo "seedoffset="$seedoffset
 			if [ $anysymbol -eq 1 ]; then
-				"$prefix/replaceu" -i orig2 -o $seedoffset >> infile 2>>"$progressfile" || exit 1  # yarinaoshi
+				"$prefix/replaceu" $seqtype -i orig2 -o $seedoffset >> infile 2>>"$progressfile" || exit 1  # yarinaoshi
 				cat orig2 >> orig
 			else
 				cat infile2 >> infile
 			fi
 		elif [ $seedtable != "x" ]; then
 			cat _seedtablefile > hat3.seed
+		elif [ $pdblist != "/dev/null" -o $ownlist != "/dev/null" ]; then
+			mv infile infile2
+			if [ $anysymbol -eq 1 ]; then
+				mv orig orig2
+				cat /dev/null > orig
+			fi
+			cat /dev/null > infile
+
+			echo "strdir = " 1>>"$progressfile"
+			echo $strdir 1>>"$progressfile"
+
+			echo "Calling DASH (http://sysimm.ifrec.osaka-u.ac.jp/dash/)" 1>>"$progressfile"
+			perl "$prefix/mafftash_premafft.pl" -p pdblist -o ownlist -d "$strdir" 2>>"dasherr"
+			dashres="$?"
+			cat dasherr  1>>"$progressfile"
+
+			if [ $dashres -ne "0" ]; then
+				echo "Error in DASH" 1>>"$progressfile"
+				exit 1;
+			fi
+			echo "Done." 1>>"$progressfile"
+
+			seedoffset=`grep -c '^[>|=]' instr | head -1 ` 
+
+			echo "# of structures = " 1>>"$progressfile"
+			echo $seedoffset 1>>"$progressfile"
+			mv hat3 hat3.seed
+
+			if [ $anysymbol -eq 1 ]; then
+				cat instr >> orig
+				"$prefix/replaceu" $seqtype -i instr -o 0 > clean 2>>"$progressfile" || exit 1
+				mv clean infile
+
+				"$prefix/replaceu" $seqtype -i orig2 -o $seedoffset >> infile 2>>"$progressfile" || exit 1  # yarinaoshi
+				cat orig2 >> orig
+			else
+				cat instr > infile
+				cat infile2 >> infile
+			fi
 		else
 			cat /dev/null > hat3.seed
 		fi
 #		cat hat3.seed
+
+		if [ $mergetable != "/dev/null" ]; then
+			if [ $nadd -gt "0" ]; then
+				echo "Impossible" 1>&2
+				exit 1
+			fi
+#			if [ $seed != "x" -o $seedtable != "x" ]; then
+#				echo "This version does not support the combination of merge and seed." 1>&2
+#				exit 1
+#			fi
+#			iterate=0 # 2013/04/16
+			mergearg="-H $seedoffset"
+		fi
+
 
 
 		if [ $mccaskill -eq 1 ]; then
@@ -1423,92 +1920,92 @@ if [ $# -gt 0 ]; then
 			"$prefix/dndfast7" $swopt < infile > /dev/null  2>>"$progressfile"    || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "blast" ]; then
 			"$prefix/dndblast" < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "foldalignlocal" ]; then
-			"$prefix/pairlocalalign" -C $numthreads $seqtype $foldalignopt $model -g $lexp -f $lgop -h $laof -H -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign" -C $numthreads $seqtype $foldalignopt $model -g $lexp -f $lgop -Q $spfactor -h $laof -H -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "foldalignglobal" ]; then
-			"$prefix/pairlocalalign" -C $numthreads $seqtype $foldalignopt $model -g $pgexp -f $pggop -h $pgaof -H -o -global -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign" -C $numthreads $seqtype $foldalignopt $model -g $pgexp -f $pggop -Q $spfactor -h $pgaof -H -o -global -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "slara" ]; then
-			"$prefix/pairlocalalign" -C $numthreads -p $laraparams  $seqtype $model  -f $lgop  -T -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign" -C $numthreads -p $laraparams  $seqtype $model  -f $lgop -Q $spfactor -T -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "lara" ]; then
-			"$prefix/pairlocalalign" -C $numthreads -p $laraparams  $seqtype $model  -f $lgop  -B -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign" -C $numthreads -p $laraparams  $seqtype $model  -f $lgop -Q $spfactor -B -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "scarna" ]; then
-			"$prefix/pairlocalalign"   -C $numthreads $seqtype $model  -f $pggop  -s -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign"   -C $numthreads $seqtype $model  -f $pggop -Q $spfactor -s -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "dafs" ]; then
-			"$prefix/pairlocalalign"  -C $numthreads $seqtype $model  -f $pggop  -G -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign"  -C $numthreads $seqtype $model  -f $pggop -Q $spfactor -G -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "global" ]; then
-			"$prefix/pairlocalalign"  -C $numthreads $seqtype $model -g $pgexp -f $pggop  -h $pgaof  -F < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign" -u $unalignlevel $localparam  -C $numthreads $seqtype $model -g $pgexp -f $pggop -Q $spfactor -h $pgaof  -A < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "local" ]; then
-			if [ $fragment -eq 1 ]; then 
-				"$prefix/pairlocalalign" $addarg   -C $numthreads $seqtype $model  -g $lexp -f $lgop  -h $laof -L < infile > /dev/null  2>>"$progressfile"      || exit 1
+			if [ $fragment -ne 0 ]; then 
+				"$prefix/pairlocalalign" $localparam $addarg   -C $numthreads $seqtype $model  -g $lexp -f $lgop -Q $spfactor -h $laof -L < infile > /dev/null  2>>"$progressfile"      || exit 1
 				cat hat3.seed hat3 > hatx
 				mv hatx hat3
-				"$prefix/addsingle" -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+				"$prefix/addsingle" -Q 100 $legacygapopt -O $outnum $addsinglearg $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			else
-				"$prefix/pairlocalalign" -C $numthreads $seqtype $model  -g $lexp -f $lgop  -h $laof -L < infile > /dev/null  2>>"$progressfile"      || exit 1
+				"$prefix/pairlocalalign" -u $unalignlevel $localparam -C $numthreads $seqtype $model  -g $lexp -f $lgop -Q $spfactor -h $laof -L < infile > /dev/null  2>>"$progressfile"      || exit 1
 #				addarg wo watasanai
 				cat hat3.seed hat3 > hatx
 				mv hatx hat3
-				"$prefix/tbfast" -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+				"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $termgapopt $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			fi
 		elif [ $distance = "globalgenaf" ]; then
-			"$prefix/pairlocalalign" -C $numthreads $seqtype $model  -g $pgexp -f $pggop  -h $pgaof -O $GGOP -E $GEXP -K  < infile > /dev/null 2>>"$progressfile"    || exit 1
+			"$prefix/pairlocalalign"  -u $unalignlevel $localparam -C $numthreads $seqtype $model  -g $pgexp -f $pggop -Q $spfactor -h $pgaof -O $GGOP -E $GEXP -K  < infile > /dev/null 2>>"$progressfile"    || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "localgenaf" ]; then
-			"$prefix/pairlocalalign" -C $numthreads $seqtype $model -g $lexp -f $lgop  -h $laof -O $LGOP -E $LEXP -N < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign"  -u $unalignlevel $localparam -C $numthreads $seqtype $model -g $lexp -f $lgop -Q $spfactor -h $laof -O $LGOP -E $LEXP -N < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/tbfast" -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $termgapopt $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "last" ]; then
-			if [ $fragment -eq 1 ]; then 
-				"$prefix/pairlocalalign" $addarg   -C $numthreads $seqtype $model -e $last_e -w $last_m -g $lexp -f $lgop  -h $laof -R $last_subopt $last_once -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+			if [ $fragment -ne 0 ]; then 
+				"$prefix/pairlocalalign" $addarg   -C $numthreads $seqtype $model -e $last_e -w $last_m -g $lexp -f $lgop -Q $spfactor -h $laof -R $last_subopt $last_once -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 				cat hat3.seed hat3 > hatx
 				mv hatx hat3
-				"$prefix/addsingle" -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+				"$prefix/addsingle" -Q 100 $legacygapopt -O $outnum $addsinglearg $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			else
-				"$prefix/pairlocalalign" -C $numthreads $seqtype $model -e $last_e -w $last_m -g $lexp -f $lgop  -h $laof -R $last_subopt $last_once -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+				"$prefix/pairlocalalign" -C $numthreads $seqtype $model -e $last_e -w $last_m -g $lexp -f $lgop -Q $spfactor -h $laof -R $last_subopt $last_once -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 #				addarg wo watasanai
 				cat hat3.seed hat3 > hatx
 				mv hatx hat3
-				"$prefix/tbfast" -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+				"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $termgapopt $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			fi
 		elif [ $distance = "lastmulti" ]; then
-			"$prefix/dndpre" -M 2 $addarg -C $numthreads $seqtype $model -g $lexp -f $lgop -h $laof < infile > /dev/null 2>>"$progressfile"      || exit 1
+			"$prefix/dndpre" -M 2 $addarg -C $numthreads $seqtype $model -g $lexp -f $lgop -Q $spfactor -h $laof < infile > /dev/null 2>>"$progressfile"      || exit 1
 			mv hat2 hat2i
-			"$prefix/pairlocalalign" $addarg   -C $numthreads $seqtype $model -e $last_e -w $last_m -g $lexp -f $lgop  -h $laof -r $last_subopt $last_once -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign" $addarg   -C $numthreads $seqtype $model -e $last_e -w $last_m -g $lexp -f $lgop -Q $spfactor -h $laof -r $last_subopt $last_once -d "$prefix" < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hat2 hat2n
 			mv hatx hat3
-			if [ $fragment -eq 1 ]; then 
-				"$prefix/addsingle" -d -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			if [ $fragment -ne 0 ]; then 
+				"$prefix/addsingle" -Q 100 $legacygapopt -d -O $outnum $addsinglearg $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			else
 				echo "Impossible" 1>&2
 				exit 1
@@ -1516,69 +2013,69 @@ if [ $# -gt 0 ]; then
 		elif [ $distance = "multi" ]; then
 			"$prefix/dndpre" -M 2 $addarg -C $numthreads $seqtype $model -g $lexp -f $lgop -h $laof < infile > /dev/null 2>>"$progressfile"      || exit 1
 			mv hat2 hat2i
-			"$prefix/pairlocalalign" $addarg   -C $numthreads $seqtype $model  -g $lexp -f $lgop  -h $laof -Y < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign" $localparam $addarg   -C $numthreads $seqtype $model  -g $lexp -f $lgop -Q $spfactor -h $laof -Y < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hat2 hat2n
 			mv hatx hat3
-			if [ $fragment -eq 1 ]; then 
-				"$prefix/addsingle" -d -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			if [ $fragment -ne 0 ]; then 
+				"$prefix/addsingle" -Q 100 $legacygapopt -d -O $outnum $addsinglearg $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			else
 				echo "Impossible" 1>&2
 				exit 1
 			fi
 		elif [ $distance = "hybrid" ]; then
-			"$prefix/pairlocalalign" $addarg   -C $numthreads $seqtype $model  -g $lexp -f $lgop  -h $laof -Y < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/pairlocalalign" $addarg   -C $numthreads $seqtype $model  -g $lexp -f $lgop -Q $spfactor -h $laof -Y < infile > /dev/null  2>>"$progressfile"      || exit 1
 			cat hat3.seed hat3 > hatx
 			mv hatx hat3
-			"$prefix/disttbfast" -W $tuplesize -O $outnum $addarg -C $numthreads $memopt $weightopt $treeinopt $treeoutopt -T -y $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
-			if [ $fragment -eq 1 ]; then 
-				"$prefix/addsingle" -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/disttbfast" -E 1 -s $unalignlevel $legacygapopt -W $tuplesize $termgapopt $outnum $addarg -C $numthreads $memopt $weightopt $treeinopt $treeoutopt -T -y $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			if [ $fragment -ne 0 ]; then 
+				"$prefix/addsingle" -Q 100 $legacygapopt -O $outnum $addsinglearg $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			else
-				"$prefix/tbfast" -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+				"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $termgapopt $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			fi
 		elif [ $distance = "distonly" ]; then
-			"$prefix/pairlocalalign"   -C $numthreads $seqtype $model -g $pgexp -f $pggop  -h $pgaof  -t < infile > /dev/null  2>>"$progressfile"      || exit 1
-			"$prefix/tbfast" $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/pairlocalalign"   -C $numthreads $seqtype $model -g $pgexp -f $pggop -Q $spfactor -h $pgaof  -t < infile > /dev/null  2>>"$progressfile"      || exit 1
+			"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 		elif [ $distance = "parttree" ]; then
-			"$prefix/splittbfast" $algopt $splitopt $partorderopt $parttreeoutopt $memopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft -p $partsize -s $groupsize $treealg -i infile   > pre 2>>"$progressfile" || exit 1
+			"$prefix/splittbfast" $legacygapopt $algopt $splitopt $partorderopt $parttreeoutopt $memopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof -p $partsize -s $groupsize $treealg -i infile   > pre 2>>"$progressfile" || exit 1
 			mv hat3.seed hat3
 		elif [ $distance = "ktuplesmulti" ]; then
-			echo $localparam
-			"$prefix/dndpre" -M 1 $addarg -C $numthreads $seqtype $model -g $lexp -f $lgop -h $laof < infile > /dev/null 2>>"$progressfile"      || exit 1
-			mv hat2 hat2i
-			"$prefix/disttbfast" -W $tuplesize -O $outnum $addarg -C $numthreads $memopt $weightopt $treeinopt $treeoutopt -T -y $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
-			mv hat2 hat2n
-			if [ $fragment -eq 1 ]; then 
-				"$prefix/addsingle" -d -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+#			"$prefix/dndpre" -M 1 $addarg -C $numthreads $seqtype $model -g $lexp -f $lgop -h $laof < infile > /dev/null 2>>"$progressfile"      || exit 1
+#			mv hat2 hat2i
+#			"$prefix/disttbfast" -E 1 -s $unalignlevel $legacygapopt -W $tuplesize $termgapopt $outnum $addarg -C $numthreads $memopt $weightopt $treeinopt $treeoutopt -T -y $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+#			mv hat2 hat2n
+			if [ $fragment -ne 0 ]; then 
+				"$prefix/addsingle" -Q 100 $legacygapopt -d -W $tuplesize -O $outnum $addsinglearg $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
+#				"$prefix/addsingle" -Q 100 $legacygapopt -d -O $outnum $addsinglearg $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			else
 				echo "Impossible" 1>&2
 				exit 1
 			fi
 		else
-			if [ $fragment -eq 1 ]; then 
-#				"$prefix/disttbfast" -W $tuplesize -O $outnum $addarg -C $numthreads $memopt $weightopt $treeinopt $treeoutopt -T -y $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
-				"$prefix/addsingle" -W $tuplesize -O $outnum $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
-#				cycle=1 # sudeni 1
+			if [ $fragment -ne 0 ]; then 
+				"$prefix/addsingle" -Q 100 $legacygapopt -W $tuplesize -O $outnum $addsinglearg $addarg -C $numthreads $rnaopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h $aof  $param_fft $localparam   $algopt $treealg $scoreoutarg < infile   > /dev/null 2>>"$progressfile" || exit 1
 			else
-				"$prefix/disttbfast" -W $tuplesize -O $outnum $addarg -C $numthreads $memopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft $algopt $treealg $scoreoutarg < infile   > pre 2>>"$progressfile" || exit 1
+				"$prefix/disttbfast" -q $npickup -E $cycledisttbfast -V "-"$gopdist  -s $unalignlevel $legacygapopt $mergearg -W $tuplesize $termgapopt $outnum $addarg -C $numthreads $memopt $weightopt $treeinopt $treeoutopt $distoutopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  $param_fft $algopt $treealg $scoreoutarg < infile   > pre 2>>"$progressfile" || exit 1
 				mv hat3.seed hat3
 			fi
 		fi
-		while [ $cycle -gt 1 ]
+		while [ $cycletbfast -gt 1 ]
 		do
 			if [ $distance = "parttree" ]; then
 				mv pre infile
-				"$prefix/splittbfast" -Z $algopt $splitopt $partorderopt $parttreeoutopt $memopt $seqtype $model -f "-"$gop  -h "-"$aof  $param_fft -p $partsize -s $groupsize $treealg -i infile   > pre 2>>"$progressfile" || exit 1
+				"$prefix/splittbfast" $legacygapopt -Z $algopt $splitopt $partorderopt $parttreeoutopt $memopt $seqtype $model -f "-"$gop -Q $spfactor -h $aof  -p $partsize -s $groupsize $treealg -i infile   > pre 2>>"$progressfile" || exit 1
 			else
-				"$prefix/tbfast" -O $outnum -C $numthreads $rnaopt $weightopt $treeoutopt $distoutopt $memopt $seqtype $model  -f "-"$gop  -h "-"$aof $param_fft  $localparam $algopt -J $treealg $scoreoutarg < pre > /dev/null 2>>"$progressfile" || exit 1
+				"$prefix/tbfast" -V "-"$gopdist -s $unalignlevel $legacygapopt $mergearg $termgapopt $outnum -C $numthreads $rnaopt $weightopt $treeoutopt $distoutopt $memopt $seqtype $model  -f "-"$gop -Q $spfactor -h $aof $param_fft  $localparam $algopt -J $treealg $scoreoutarg < pre > /dev/null 2>>"$progressfile" || exit 1
+# fragment>0 no baai, nanimoshinai
+# seed youchuui!!
 			fi
-			cycle=`expr $cycle - 1`
+			cycletbfast=`expr $cycletbfast - 1`
 		done
 		if [ $iterate -gt 0 ]; then
 			if [ $distance = "ktuples" ]; then
-			    "$prefix/dndpre" -C $numthreads < pre     > /dev/null 2>>"$progressfile" || exit 1
+			    "$prefix/dndpre" -M 2 -C $numthreads < pre     > /dev/null 2>>"$progressfile" || exit 1
 			fi
-			"$prefix/dvtditr" -C $numthreads -t $randomseed $rnaoptit $memopt $scorecalcopt $localparam -z 50 $seqtype $model -f "-"$gop -h "-"$aof  -I $iterate $weightopt $treeinopt $algoptit $treealg -p $parallelizationstrategy  $scoreoutarg < pre     > /dev/null 2>>"$progressfile" || exit 1
+			"$prefix/dvtditr" $bunkatsuopt -E $fixthreshold -s $unalignlevel  $legacygapopt $mergearg -C $numthreadsit -t $randomseed $rnaoptit $memopt $scorecalcopt $localparam -z 50 $seqtype $model -f "-"$gop -Q $spfactor -h $aof  -I $iterate $weightopt $treeinopt $algoptit $treealg -p $parallelizationstrategy  $scoreoutarg < pre     > /dev/null 2>>"$progressfile" || exit 1
 		fi
 		if [ $coreout -eq 1 ]; then
 			"$prefix/setcore" -w $corewin -i $corethr $coreext < pre > pre2
@@ -1587,6 +2084,9 @@ if [ $# -gt 0 ]; then
 			"$prefix/restoreu" -a pre -i orig > restored || exit 1
 			mv restored pre
 		fi
+
+
+
 
 		echo '' 1>>"$progressfile"
 		if [ $mccaskill -eq 1 ]; then
@@ -1604,6 +2104,16 @@ if [ $# -gt 0 ]; then
 			echo "(1) Do et al., 2006, Bioinformatics 22:e90-98" 1>>"$progressfile"
 			echo "(2) Katoh and Toh, 2008, BMC Bioinformatics 9:212" 1>>"$progressfile"
 			echo "" 1>>"$progressfile"
+		fi
+		if [ $pdblist != "/dev/null" -o $ownlist != "/dev/null" ]; then
+			echo "Input structures are decomposed into structural domains using" 1>>"$progressfile"
+			echo "Protein Domain Parser (Alexandrov & Shindyalov 2003)."         1>>"$progressfile"
+			echo "Domain pairs are aligned using the rash function in"           1>>"$progressfile"
+			echo "the ASH structural alignment package (Standley et al. 2007)."  1>>"$progressfile"
+		fi
+		if [ $pdblist != "/dev/null" ]; then
+			echo "Pre-computed alignments stored in "                            1>>"$progressfile"
+			echo "DASH (http://sysimm.ifrec.osaka-u.ac.jp/dash/) are used. "     1>>"$progressfile"
 		fi
 		if [ $distance = "fasta" -o $partdist = "fasta" ]; then
 			echo "Pairwise alignments were computed by FASTA" 1>>"$progressfile"
@@ -1645,11 +2155,22 @@ if [ $# -gt 0 ]; then
 		echo ' '$explanation 1>>"$progressfile"
 		echo '' 1>>"$progressfile"
 		echo "If unsure which option to use, try 'mafft --auto input > output'." 1>>"$progressfile"
+		echo "For more information, see 'mafft --help', 'mafft --man' and the mafft page." 1>>"$progressfile"
+		echo "" 1>>"$progressfile"
+		echo "The default gap scoring scheme has been changed in version 7.110 (2013 Oct)." 1>>"$progressfile"
+		echo "It tends to insert more gaps into gap-rich regions than previous versions." 1>>"$progressfile"
+		echo "To disable this change, add the --leavegappyregion option." 1>>"$progressfile"
 #		echo "If long gaps are expected, try 'mafft --ep 0.0 --auto input > output'." 1>>"$progressfile"
 #		echo "If the possibility of long gaps can be excluded, add '--ep 0.123'." 1>>"$progressfile"
-		echo "For more information, see 'mafft --help', 'mafft --man' and the mafft page." 1>>"$progressfile"
 		echo '' 1>>"$progressfile"
+
+		
+		if [ $pdblist != "/dev/null" -o $ownlist != "/dev/null" ]; then
+			cat dasherr >>"$progressfile"
+		fi
+
 	)
+
 
 	if [ "$outputfile" = "" ]; then
 		if [ "$outputopt" = "null" ]; then
@@ -1669,8 +2190,16 @@ if [ $# -gt 0 ]; then
 		cp $TMPFILE/infile.tree "$infilename.tree"
 	fi
 
+	if [ -s $TMPFILE/GuideTree ]; then # --merge no toki dake
+		cp $TMPFILE/GuideTree .
+	fi
+
 	if [ $distout -eq 1 ]; then
 		cp $TMPFILE/hat2 "$infilename.hat2"
+	fi
+
+	if [ $npickup -ne 0 ]; then
+		cp $TMPFILE/notused "$infilename.notused"
 	fi
 
 	exit 0;
@@ -1705,9 +2234,9 @@ BEGIN {
 		printf( "\n" )                                                                           > "/dev/tty";
 		printf( "   MAFFT %s\n", version )                                                       > "/dev/tty";
 		printf( "\n" )                                                                           > "/dev/tty";
-		printf( "        Copyright (c) 2012 Kazutaka Katoh\n" )                                  > "/dev/tty";
-		printf( "        NAR 30:3059-3066, NAR 33:511-518\n" )                                   > "/dev/tty";
-		printf( "        http://mafft.cbrc.jp/alignment/software/\n" )       > "/dev/tty";
+		printf( "        Copyright (c) 2014 Kazutaka Katoh\n" )                                  > "/dev/tty";
+		printf( "        MBE 30:772-780 (2013), NAR 30:3059-3066 (2002)\n" )                     > "/dev/tty";
+		printf( "        http://mafft.cbrc.jp/alignment/software/\n" )                           > "/dev/tty";
 		printf( "---------------------------------------------------------------------\n" )      > "/dev/tty";
 		printf( "\n" ) > "/dev/tty";
 	
