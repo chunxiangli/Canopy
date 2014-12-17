@@ -4,10 +4,14 @@ import canopy
 
 target_dir = canopy.global_path
 make_symlink = False
-symlink_path = os.path.join(os.path.expanduser('~'), 'bin', canopy.package_name)
+user_path = os.path.expanduser('~/bin')
+symlink_path = os.path.join(user_path, canopy.package_name)
 if '--user' in sys.argv:
+        if not os.path.isdir(user_path):
+                canopy.msg_exit('%s does not exist! Please make sure it included in the environment variable "PATH".'%user_path) 
         if os.path.exists(symlink_path):
-           canopy.msg_exit('%s existed!\nYou should remove it and then try again.'%symlink_path)     
+                canopy.msg_exit('%s existed!\nYou should remove it and then try again.'%symlink_path)     
+
 	make_symlink = True
 	target_dir = os.path.expanduser(canopy.local_path)
 
