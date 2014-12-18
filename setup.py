@@ -39,8 +39,11 @@ setup(name=canopy.package_name,
       platforms=['*nix', 'Darwin'],
       requires=['Biopython(>=1.58)', 'Dendropy(>=3.10.0)'],
       packages=[canopy.package_name],
+      package_data={ '':['setup_virtualenv'],
+		     'example': ['example.cfg', 'example.fas'],
+		     'example/multilocus':['gene1.txt', 'gene2.txt']},
       data_files= sorted(extend_files.items()),
-      scripts=['scripts/'+canopy.package_name]
+      scripts=['scripts/'+canopy.package_name, 'scripts/wasabi']
      )
 
 if make_symlink:
