@@ -41,7 +41,8 @@ setup(name=canopy.package_name,
       packages=[canopy.package_name],
       package_data={ '':['setup_virtualenv'],
 		     'example': ['example.cfg', 'example.fas'],
-		     'example/multilocus':['gene1.txt', 'gene2.txt']},
+		     'example/multilocus':['gene1.txt', 'gene2.txt'],
+		     'canopy/mac_bin':['*']},
       data_files= sorted(extend_files.items()),
       scripts=['scripts/'+canopy.package_name, 'scripts/wasabi']
      )

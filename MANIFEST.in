@@ -1,2 +1,3 @@
 include setup_virtualenv
 recursive-include example *
+recursive-include canopy/mac_bin *
