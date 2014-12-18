@@ -92,6 +92,7 @@ class Option(object):
 			
 class ConfigAndOptionParser(dict, object):
         _sections = dict()
+	_section_list = []
         _config = None
 
         def __init__(self):  
@@ -102,8 +103,8 @@ class ConfigAndOptionParser(dict, object):
                 import ConfigParser
                 self._config = ConfigParser.ConfigParser()
                 self._config.read(config_files)
-                self.set_default_path(self._sections.keys())
-                for section in self._sections.keys():
+                self.set_default_path(self._section_list)
+                for section in self._section_list:
                         if self._config.has_section(section):
                                 if section not in self:
                                         self[section] = {}
@@ -153,60 +154,69 @@ class ConfigAndOptionParser(dict, object):
 		g.append(Option('showevents', '--showevents', group='main', help='output evolutioanry events', action='store_true'))
 		g.append(Option('showxml', '--showxml', group='main', help='output xml-files', action='store_true'))
 		g.append(Option('showall', '--showall', group='main', help='output all files', action='store_true'))
-
+		self._section_list.append('main')
                 self._sections['main'] = g
+
                 g = []
                 g.append(Option('mafft.path', '--mafft.path', group='mafft', help='mafft exectutable path'))
                 g.append(Option('mafft.args', '--mafft.args', group='mafft', help='Extra arguments'))
 		g.append(Option('nolocal', '--nolocal', group='mafft', help='disable the call of L-INS-i when the number of sequences is less than 200 and the length not exceed 2000.', action='store_true'))
+		self._section_list.append('mafft')
                 self._sections['mafft'] = g
-		g = []
-                g.append(Option('clustalw.path', '--clustalw.path', group='clustalw', help='clustalw exectutable path'))
-                g.append(Option('clustalw.args', '--clustalw.args', group='clustalw', help='Extra arguments'))
-                self._sections['clustalw'] = g
 
-                g = []
+		g = []
+                g.append(Option('prank.path', '--prank.path', group='prank', help='prank exectutable path'))
+                g.append(Option('prank.args', '--prank.args', group='prank', help='Extra arguments'))
+		self._section_list.append('prank')
+                self._sections['prank'] = g
+
+		g = []
                 g.append(Option('raxml.model', '--model', group='raxml', help='Substitution model. The default model for DNA sequences is GTRGAMMA and PROTGAMMAWAG for amino acid sequences.'))
                 g.append(Option('raxml.path', '--raxml.path', group='raxml', help='raxml exectutable path'))
                 g.append(Option('raxml.args', '--raxml.args', group='raxml', help='Extra arguments'))
+		self._section_list.append('raxml')
                 self._sections['raxml'] = g
+
+		g = []
+                g.append(Option('clustalw.path', '--clustalw.path', group='clustalw', help='clustalw exectutable path'))
+                g.append(Option('clustalw.args', '--clustalw.args', group='clustalw', help='Extra arguments'))
+		self._section_list.append('clustalw')
+                self._sections['clustalw'] = g
+
+                g = []
+		g.append(Option('muscle.path', '--muscle.path', group='muscle', help='muscle exectutable path'))
+                g.append(Option('muscle.args', '--muscle.args', group='muscle', help='Extra arguments'))
+		self._section_list.append('muscle')
+                self._sections['muscle'] = g
+
+		g = []
+                g.append(Option('pagan.path', '--pagan.path', group='pagan', help='pagan exectutable path'))
+                g.append(Option('pagan.args', '--pagan.args', group='pagan', help='Extra arguments'))
+		self._section_list.append('pagan')
+                self._sections['pagan'] = g
+
+		g = []
+		g.append(Option('fasttree.path', '--fasttree.path', group='fasttree', help='fasttree exectutable path'))
+                g.append(Option('fasttree.args', '--fasttree.args', group='fasttree', help='Extra arguments'))
+		self._section_list.append('fasttree')
+                self._sections['fasttree'] = g
 
 		g = []
                 g.append(Option('phyml.model', '--phyml.model', group='phyml', help='Substitution model. The default model for DNA sequences is HKY85 and WAG for amino acid sequences.'))
                 g.append(Option('phyml.path', '--phyml.path', group='phyml', help='phyml exectutable path'))
                 g.append(Option('phyml.args', '--phyml.args', group='phyml', help='Extra arguments'))
+		self._section_list.append('phyml')
                 self._sections['phyml'] = g
-		
-                g = []
-                g.append(Option('prank.path', '--prank.path', group='prank', help='prank exectutable path'))
-                g.append(Option('prank.args', '--prank.args', group='prank', help='Extra arguments'))
-                self._sections['prank'] = g
-		g = []
-                g.append(Option('pagan.path', '--pagan.path', group='pagan', help='pagan exectutable path'))
-                g.append(Option('pagan.args', '--pagan.args', group='pagan', help='Extra arguments'))
-                self._sections['pagan'] = g
-
-		g = []
-		g.append(Option('muscle.path', '--muscle.path', group='muscle', help='muscle exectutable path'))
-                g.append(Option('muscle.args', '--muscle.args', group='muscle', help='Extra arguments'))
-                self._sections['muscle'] = g
-
+                
 		g = []
                 g.append(Option('pranktree.path', '--pranktree.path', group='pranktree', help='pranktree exectutable path'))
                 g.append(Option('pranktree.args', '--pranktree.args', group='pranktree', help='Extra arguments'))
+		self._section_list.append('pranktree')
                 self._sections['pranktree'] = g
-
-		g = []
-		g.append(Option('fasttree.path', '--fasttree.path', group='fasttree', help='fasttree exectutable path'))
-                g.append(Option('fasttree.args', '--fasttree.args', group='fasttree', help='Extra arguments'))
-                self._sections['fasttree'] = g
-
-
-
 
         def set_options_to_parser(self, parser):
                 from optparse import OptionGroup
-                for section in self._sections.keys():
+                for section in self._section_list:
                         group = OptionGroup(parser, section, 'options for '+section)
                         for p in self._sections[section]:
                                 p.add_to_parser(group)
