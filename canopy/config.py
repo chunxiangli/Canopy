@@ -145,7 +145,7 @@ class ConfigAndOptionParser(dict, object):
                 g.append(Option('initial_aligner', '--initial_aligner', group='main', help='The name of initial aligner tool. Currently support mafft, prank, clustalw and pagan. Default:mafft'))
                 g.append(Option('aligner', '--aligner', group='main', help='The name of aligner tool for iteration steps. Currently support mafft, prank, clustalw and pagan. Default:prank'))
                 g.append(Option('merger', '--merger', group='main', help='The name of merge tool for iteration steps. Currently support muscle and prank. Default:prank'))
-                g.append(Option('tree_estimator', '--tree_estimator', group='main', help='The name of tree estimate tool. Currently support raxml, fasttree and phyml. Default:raxml'))
+                g.append(Option('tree_estimator', '--tree_estimator', group='main', help='The name of tree estimate tool. Currently support raxml, fasttree, pranktree and phyml. Default:raxml'))
 		g.append(Option('config_export_path', '--config_export_path', group='main', help="the file for saving user's configuration"))
 		g.append(Option('without_guide', '--without_guide', group='main', help="Don't provide guide tree to align procedure.", action='store_true'))
 		g.append(Option('decomposite_strategy', '--decomposite_strategy', type='choice', choices=['longest', 'seed'], group='main', help='The strategy for the decomposition of root tree. longest: remove the longest branch to split a tree into two parts; seed: split a tree by removing the seed node.'))

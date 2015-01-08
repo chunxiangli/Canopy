@@ -34,6 +34,7 @@ class CoEstimator(JobBase):
 		self._event_list = Event()
 		self._job = None
 		self._iterational_result_files = []
+		self.parallel_only = Config.main.get("max_iter", _DEFAULT_MAX_ITER) == 1 and tree_estimator.name == 'pranktree'
 
 	def _keep_iterating(self):	
 		if 1 == self._cur_iter:
@@ -90,13 +91,16 @@ class CoEstimator(JobBase):
 				#estimate new tree and check whether got improved
    				new_score = None
                                 if self._num_taxa > 3:
-                                        MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
-                                        new_score = self._update_tree(cur_iter_work_tmp_dir)
-                                        MESSENGER.send_info("Iteration %d: tree estimation done."%(self._cur_iter))
-                                        if not self._subiter:
-                                                self._store_iterational_tree_result(new_score)
+					if self.parallel_only:	
+                                        	_LOG.info("Only parallelize the alignment procedure. The final result file saves the guide tree.")
+					else:
+						MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
+						new_score = self._update_tree(cur_iter_work_tmp_dir)
+						MESSENGER.send_info("Iteration %d: tree estimation done."%(self._cur_iter))
+						if not self._subiter:
+							self._store_iterational_tree_result(new_score)
 
-                                        self._tree = self._new_tree
+						self._tree = self._new_tree
                                 else:   
                                         _LOG.info("Can't use %s. The alignment size is smaller than 4."%self._tree_estimator.name)
                                         self._best_iter = self._cur_iter
