@@ -35,6 +35,7 @@ class CoEstimator(JobBase):
 		self._job = None
 		self._iterational_result_files = []
 		self.parallel_only = Config.main.get("max_iter", _DEFAULT_MAX_ITER) == 1 and tree_estimator.name == 'pranktree'
+		self.initial_skip = kwargs.get("initialSkip", False)
 
 	def _keep_iterating(self):	
 		if 1 == self._cur_iter:
@@ -93,6 +94,7 @@ class CoEstimator(JobBase):
                                 if self._num_taxa > 3:
 					if self.parallel_only:	
                                         	_LOG.info("Only parallelize the alignment procedure. The final result file saves the guide tree.")
+						self._best_iter = self._cur_iter
 					else:
 						MESSENGER.send_info("Iteration %d: tree estimation start..."%(self._cur_iter))
 						new_score = self._update_tree(cur_iter_work_tmp_dir)
@@ -309,6 +311,8 @@ class CoEstimator(JobBase):
 		source_prefix = "initial"
 		if self._best_iter > 0:
 			source_prefix = "iteration%d"%self._best_iter
+		elif self.initial_skip:
+			source_prefix = "iteration1"
 		optimal_prefix = "result"
 		copy_files(work_dir, source_prefix, optimal_prefix)
 

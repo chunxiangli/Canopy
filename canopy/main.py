@@ -361,9 +361,10 @@ def main():
 		num_cpus = Config.main["num_cpus"]
 		mainWorker.set_max_num_workers(num_cpus) 
 		mainWorker.start_workers(num_cpus)	
-
+		initialSkip = True
 		#initial alignment
 		if initial_tree is None:
+			initialSkip = False
 			initial_temp = tempFileManager.create_subdir("guide_tree_estimation")
 			MESSENGER.send_info("Initial alignment start...")
 			initial_input_seqs = type(input_seqs)()
@@ -382,7 +383,7 @@ def main():
 				initial_tree = {}
 				_RunningJob = []
 				for name in initial_input_seqs.names:
-					job  = Config.initial_aligner.create_job(initial_input_seqs[name],
+					job = Config.initial_aligner.create_job(initial_input_seqs[name],
 										 id=name,
 										 tmp_dir=initial_temp,
 										 delete_temps=delete_temps)
@@ -475,6 +476,7 @@ def main():
 						  output_options=Config.main.get("output_options",[]),
 						  id=name,
 						  name_map=name_map,
+						  initialSkip=initialSkip,
 						  rooted=Config.main.get("rooted", False))
 
 			_RunningJob = coestimator
