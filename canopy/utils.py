@@ -427,8 +427,10 @@ class Prank(Aligner):
 				command.append("-dnafreqs=%s"%",".join([str(freq) for freq in alignment.dna_freqs]))
 
 		command.append("-tmp=%s"%wdir)
+		'''
 		if num_taxa > 200:
 			command.append("-uselogs")
+		'''
 
 		_LOG.debug("PRANK:command wrapped %s"%" ".join(command))
 		_LOG.debug("Prank delete_temps:%s"%kwargs.get("delete_temps", self.delete_temps))
@@ -650,9 +652,10 @@ class PrankMerger(Merger):
 			command.extend(["-d=%s"%input1, "-partaligned"])
 			if tree1 is not None:
 				command.append("-t=%s"%tree1)
-
+		'''
 		if num_taxa1 + num_taxa2 > 200:
 			command.append("-uselogs")
+		'''
 
 		if is_merge and kwargs.get("merge_tree", None):
 			merge_tree = os.path.join(wdir, "merge_tree")

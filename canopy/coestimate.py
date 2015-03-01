@@ -323,17 +323,11 @@ class CoEstimator(JobBase):
 		_LOG.debug("Start split...")
 		alignMergeTree = AlignMergeTree(phy_tree, alignment, work_dir, self._aligner, self._merger, self._tree_estimator, **kwargs)
 		_LOG.debug("End split.")
-
 		_LOG.debug("Start merge...")
-		while _MERGE_NODES:
-			for node in _MERGE_NODES:
-				job = node._create_merge_job()
-				if job:
-					jobQueue.put(job, node._num_taxa)
-					_MERGE_NODES.remove(node)
-					if not _MERGE_NODES:#return the root job
-						return job
+		alignMergeTree.get_result()
 		_LOG.debug("End merge...")
+
+		return (alignMergeTree._merge_job if alignMergeTree._align_job is None else alignMergeTree._align_job)
 
 	def _store_iterational_tree_result(self, new_score):
                 _LOG.info("store_iterational_tree_result")
@@ -387,7 +381,6 @@ class CoEstimator(JobBase):
 			_LOG.debug("Best iter:%d"%self._best_iter)
 		return self._result
 
-_MERGE_NODES = []
 class AlignMergeTree(object):
         def __init__(self, phy_tree, alignment, work_dir, aligner, merger, tree_estimator, **kwargs):
                 self._phy_tree = phy_tree
@@ -407,15 +400,25 @@ class AlignMergeTree(object):
                 self._work_dir = work_dir
 		self.generate_children()
 
-	def get_result(self):
-		if self._align_job is not None:
+	def wait(self):
+		if self._align_job:
 			self._align_job.check_status()
+			self._align_job.wait()
+		else:
+			if self._merge_job is None:	
+				self._create_merge_job()
+
+			if self._merge_job:
+				self._merge_job.check_status()
+				self._merge_job.wait()
+
+	def get_result(self):
+		self.wait()
+		if self._align_job:
 			self._result = self._align_job.result
-		elif self._merge_job is not None: 
-			self._merge_job.check_status()
+		elif self._merge_job: 
 			self._result = self._merge_job.result
 		return self._result
-
 
         @property
         def id(self):
@@ -447,7 +450,6 @@ class AlignMergeTree(object):
 			a2 = self._alignment.sub_alignment(t2.leaf_node_names())
 			k["description"] = descrip + '/1'
 			self._lChild = AlignMergeTree(t2, a2, lChild_wdir, self.aligner, self.merger, self.tree_estimator, **k)
-			_MERGE_NODES.append(self)
 		else:
 			_LOG.debug("subalign create job")
 			job = self._create_align_job()
@@ -541,7 +543,7 @@ class AlignMergeTree(object):
                                              description=self._kwargs.get("description"))
 
                 self._merge_job = job
-
+		jobQueue.put(job, self._num_taxa)	
                	_LOG.info("Merge job created...%s"%self._work_dir)
                 return job
 

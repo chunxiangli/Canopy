@@ -5,7 +5,7 @@ def msg_exit(msg):
         print >> sys.stderr, msg+"\n"
         sys.exit(1)
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 package_name = "canopy"
 
 if platform.system() == "Windows":
