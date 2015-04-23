@@ -1,8 +1,9 @@
 from canopy import msg_exit
+from distutils.version import LooseVersion
 dendropy_minimum_version = "3.10.0"
 try:
         import dendropy
-        if dendropy.__version__ < dendropy_minimum_version:
+        if LooseVersion(dendropy.__version__) < LooseVersion(dendropy_minimum_version):
                 msg_exit("Sorry, reguires Dendropy version %s or greater"%dendropy_minimum_version)
         del dendropy
 except ImportError:
