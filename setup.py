@@ -1,5 +1,5 @@
 import glob, sys, os
-from distutils.core import setup
+from setuptools import setup
 import canopy
 
 target_dir = canopy.global_path
@@ -37,7 +37,7 @@ setup(name=canopy.package_name,
       license='GNU GENERAL PUBLIC LICENSE Version 3(http://www.gnu.org/licenses/)',
       author_email='chunxiang.li@helsinki.fi',
       platforms=['*nix', 'Darwin'],
-      requires=['Biopython(>=1.58)', 'Dendropy(>=3.10.0)'],
+      install_requires=['Biopython>=1.58', 'Dendropy>=3.10.0'],
       packages=[canopy.package_name],
       package_data={ '':['setup_virtualenv'],
 		     'example': ['example.cfg', 'example.fas'],
