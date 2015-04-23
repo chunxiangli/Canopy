@@ -1,8 +1,9 @@
 from canopy import msg_exit
+from distutils.version import LooseVersion
 Bio_minimum_version = "1.58"
 try:
         import Bio
-        if Bio.__version__ < Bio_minimum_version:
+        if LooseVersion(Bio.__version__) < LooseVersion(Bio_minimum_version):
                 msg_exit("Sorry, reguires Biopython version %s or greater"%Bio_minimum_version)
         del Bio
 except ImportError:
