@@ -196,7 +196,7 @@ class Worker(Thread):
 
 	def run(self):
 		while True:
-			if jobQueue and not jobQueue.empty():
+			if jobQueue : #and not jobQueue.empty():
 				result = None
 				size, job = jobQueue.get()
 				try:
