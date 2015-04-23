@@ -20,8 +20,16 @@ out(){
 }
 
 updatePath(){
-	echo 'export PATH=$PATH:$HOME/.local/bin' >> ~/.bashrc
-	source ~/.bashrc
+    if [[ `uname` == 'Darwin' ]] ; then
+        NEWPATHDIR=$HOME/Library/Python/2.7/bin
+    else
+	    NEWPATHDIR=$HOME/.local/bin
+    fi
+
+    if [[ ! `python -c "import sys; sys.exit('$NEWPATHDIR' in '$PATH'.split(':'))"` ]] ; then
+        echo "export PATH=\$PATH:$NEWPATHDIR" >> ~/.bashrc
+        source $HOME/.bashrc
+    fi
 }
 
 if [[ -d $ENV ]] ; then
@@ -53,6 +61,7 @@ fi
 if [[ ! `which virtualenv 2> /dev/null` ]] ; then
 	out Could not find virtualenv, installing...
 	run pip install --user virtualenv
+    updatePath
 fi
 
 #create new enviroment
